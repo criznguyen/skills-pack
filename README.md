@@ -1,5 +1,7 @@
 # skills-pack
 
+Version: see [`VERSION`](VERSION) · matches the upstream `claude-skills` release tag (e.g. `v1.4.1`).
+
 A drop-in pack of [Claude Code](https://claude.com/claude-code) skills, hooks, and slash commands that turn the agent into a disciplined senior engineer — **type-checked tool surface, sandboxed by default, audit-gated, force-push-blocked, credential-refusing, loop-circuit-broken, postcondition-verified**.
 
 Designed for solo operators and small teams who want guardrails without building a framework. Everything is plain `SKILL.md` + bash hooks; nothing is hidden behind a runtime.

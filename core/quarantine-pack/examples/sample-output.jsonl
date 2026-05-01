@@ -1,0 +1,3 @@
+{"event":"quarantine","ts":"2026-04-29T14:32:11Z","tool":"mcp__zendesk__list_tickets","matcher_status":"tagged","trusted_mcp":"","surface":"mcp_user_content","latency_ms":7,"session_id":"sess-abc123"}
+{"event":"quarantine","ts":"2026-04-29T14:32:14Z","tool":"mcp__linear_list_issues","matcher_status":"skipped","trusted_mcp":"mcp__linear","surface":"mcp_user_content","latency_ms":3,"session_id":"sess-abc123"}
+{"event":"quarantine","ts":"2026-04-29T14:32:18Z","tool":"WebFetch","matcher_status":"tagged","trusted_mcp":"","surface":"web_fetch","latency_ms":4,"session_id":"sess-abc123"}

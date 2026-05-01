@@ -1,0 +1,41 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "loop-circuit-breaker session counters",
+  "type": "object",
+  "properties": {
+    "iteration_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Total PreToolUse fires this session."
+    },
+    "iteration_ceiling": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Hard ceiling; halt fires when iteration_count > iteration_ceiling. Default 150."
+    },
+    "usd_spent": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Cumulative cost in USD. Computed PostToolUse from CQR price table."
+    },
+    "usd_ceiling": {
+      "type": "number",
+      "minimum": 0,
+      "description": "Hard cost ceiling; halt fires when usd_spent > usd_ceiling."
+    },
+    "hash_window": {
+      "type": "array",
+      "items": { "type": "string" },
+      "maxItems": 10,
+      "description": "Last 10 canonical sha256 hashes; rolling FIFO."
+    },
+    "hash_collisions": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Count of duplicate hashes in the current 10-call window. Halt fires at 3."
+    },
+    "session_id": { "type": "string" },
+    "started_at": { "type": "integer", "description": "Unix epoch seconds" }
+  },
+  "required": ["iteration_count", "iteration_ceiling", "session_id"]
+}

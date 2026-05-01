@@ -1,0 +1,8 @@
+# Protected-branches list for git-force-push-gate.
+# One pattern per line. Lines starting with `#` are comments.
+# Patterns are literal branch names OR glob patterns (`fnmatch`-style).
+# The hook reads this file every invocation; edits take effect immediately.
+main
+master
+release/*
+production

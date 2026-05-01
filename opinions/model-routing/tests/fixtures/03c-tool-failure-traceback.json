@@ -1,0 +1,13 @@
+{
+  "session_id": "cqr-test-session",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "python3 scripts/migrate.py"
+  },
+  "tool_response": {
+    "is_error": false,
+    "stdout": "Traceback (most recent call last):\n  File \"scripts/migrate.py\", line 14, in <module>\n    raise RuntimeError(\"boom\")\nRuntimeError: boom\n",
+    "exit_code": 1
+  }
+}

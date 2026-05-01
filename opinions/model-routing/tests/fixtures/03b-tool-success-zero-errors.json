@@ -1,0 +1,13 @@
+{
+  "session_id": "cqr-test-session",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "npm run lint"
+  },
+  "tool_response": {
+    "is_error": false,
+    "stdout": "0 errors found\nno errors\nerror rate: 0%\nerror: 0\n",
+    "exit_code": 0
+  }
+}

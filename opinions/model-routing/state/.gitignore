@@ -1,0 +1,5 @@
+# CQR-C runtime state — never commit. The .gitkeep above preserves the
+# directory in version control; everything else is per-session ephemeral.
+*
+!.gitkeep
+!.gitignore

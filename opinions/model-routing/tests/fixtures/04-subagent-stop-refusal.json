@@ -1,0 +1,7 @@
+{
+  "session_id": "cqr-test-session",
+  "hook_event_name": "SubagentStop",
+  "agent_id": "rapid-prototyper-1234",
+  "transcript_path": "/tmp/cqr-test-transcript/refusal.txt",
+  "exit_status": "completed"
+}

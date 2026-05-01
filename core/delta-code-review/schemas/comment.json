@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/criznguyen/claude-skills/core/delta-code-review/schemas/comment.json",
+  "title": "DeltaCodeReviewFindings",
+  "description": "Output schema for the delta-code-review skill. The skill emits a JSON array of finding objects. Empty array means no findings (clean diff).",
+  "type": "array",
+  "items": { "$ref": "#/$defs/finding" },
+  "$defs": {
+    "finding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file", "line_range", "severity", "category", "comment", "suggested_fix"],
+      "properties": {
+        "file": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path to the file relative to repo root, matching the unified-diff `+++ b/<path>` header."
+        },
+        "line_range": {
+          "type": "string",
+          "pattern": "^[0-9]+(-[0-9]+)?$",
+          "description": "Single line `42` or inclusive range `42-44` referencing line numbers in the new file (post-diff). MUST overlap a `+` or context line in the diff."
+        },
+        "severity": {
+          "type": "string",
+          "enum": ["BLOCK", "SUGGEST", "NIT"],
+          "description": "ASCII three-tier severity. BLOCK = correctness/security/contract — must not merge. SUGGEST = non-blocking quality improvement. NIT = style/idiom/readability. No emoji. No 5-tier scale (CRITICAL/HIGH/etc) — that scale is reserved for the audit (P0-02) skill."
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "logic-bug",
+            "security",
+            "error-handling",
+            "concurrency",
+            "api-contract",
+            "dead-code",
+            "missing-test",
+            "naming",
+            "style",
+            "idiom",
+            "undefined-reference",
+            "other"
+          ],
+          "description": "Fixed taxonomy. `undefined-reference` is the only category permitted when the diff alone cannot resolve a referenced symbol; all other categories require evidence within the diff window."
+        },
+        "comment": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 800,
+          "description": "One- or two-sentence explanation of what is wrong and why it matters. No prose padding."
+        },
+        "suggested_fix": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 800,
+          "description": "Concrete fix the reviewer would write inline. Code snippet OK; no full-file rewrite. If no fix is feasible without more context, the literal string `n/a — needs broader audit` is acceptable."
+        }
+      }
+    }
+  },
+  "examples": [
+    [],
+    [
+      {
+        "file": "src/sort.ts",
+        "line_range": "42-44",
+        "severity": "BLOCK",
+        "category": "logic-bug",
+        "comment": "Comparator uses `a - b` on string values; string subtraction yields NaN and produces undefined sort order.",
+        "suggested_fix": "Replace with `(a, b) => a.localeCompare(b)`."
+      },
+      {
+        "file": "src/sort.ts",
+        "line_range": "55",
+        "severity": "SUGGEST",
+        "category": "missing-test",
+        "comment": "New `sortByName` export has no test in the diff. Add a case covering at least the empty-array, single-element, and reversed-input shapes.",
+        "suggested_fix": "Add `tests/sort.test.ts` cases for `[]`, `['a']`, and `['c','b','a']`."
+      },
+      {
+        "file": "src/sort.ts",
+        "line_range": "12",
+        "severity": "NIT",
+        "category": "idiom",
+        "comment": "Using `for (let i = 0; i < arr.length; i++)` where `i` is unused; `for...of` reads cleaner.",
+        "suggested_fix": "Replace the index loop with `for (const item of arr) { ... }`."
+      }
+    ]
+  ]
+}

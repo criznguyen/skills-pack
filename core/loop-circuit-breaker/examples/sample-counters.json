@@ -1,0 +1,21 @@
+{
+  "iteration_count": 87,
+  "iteration_ceiling": 150,
+  "usd_spent": 4.23,
+  "usd_ceiling": 25.0,
+  "hash_window": [
+    "1234567890abcdef",
+    "abcdef1234567890",
+    "1111222233334444",
+    "5555666677778888",
+    "9999aaaabbbbcccc",
+    "ddddeeeeffff0000",
+    "0123456789abcdef",
+    "fedcba9876543210",
+    "1357913579135791",
+    "2468024680246802"
+  ],
+  "hash_collisions": 0,
+  "session_id": "sess-mid",
+  "started_at": 1714400000
+}

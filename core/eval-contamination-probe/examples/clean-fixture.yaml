@@ -1,0 +1,19 @@
+# Clean fixture — no contamination. Probe assertion MUST pass.
+
+description: "synthetic clean fixture (self-test — must PASS the probe)"
+
+prompts:
+  - id: clean
+    raw: |
+      Solve: 2 + 2 = ?
+
+providers:
+  - id: anthropic:messages:claude-opus-4-7
+
+tests:
+  - description: "clean-0"
+    vars:
+      probe_id: "PROBE-cafef00d-self-0"
+    assert:
+      - type: not-contains
+        value: "{{probe_id}}_REFERENCE_SOLUTION:"

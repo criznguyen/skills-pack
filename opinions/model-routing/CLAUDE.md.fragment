@@ -1,0 +1,48 @@
+<!-- CQR-A FRAGMENT ================================================================
+Source: docs/research/cost-quality/00-FINAL-cost-quality-routing-design.md §5
+Date: 2026-04-28
+Expected savings: 22-30% (~$53-72/month vs ~$237/month always-Opus baseline)
+Kill switch: export CLAUDE_PIN_MODEL=claude-opus-4-7 (disables all downshifts)
+Install: append after ## SDLC Agent Routing, before ## Neural-Memory Recall First
+Remove: delete from this comment line through the CQR-A END comment line (inclusive)
+========================================================================= -->
+
+## Model Routing
+
+**Default**: Opus 4.7. Downshift only when ALL signals below say so.
+
+**Task-class → model** (when spawning sub-agents or starting a focused session):
+
+| Class | Examples | Model |
+|-------|----------|-------|
+| trivial | grep/ls/cat orchestration, log skim, summarize, single-file rename, ≤50 LOC diff review | claude-haiku-4-5 |
+| small | bug fix in <100 LOC single file, doc tweak, classify intent, single-file pattern refactor | claude-sonnet-4-6 |
+| feature | multi-file feature 2-5 files <500 LOC, new endpoint, schema migration design, ≤7-step tool plan | claude-sonnet-4-6 |
+| system | cross-module refactor, perf rewrite, concurrency fix, >5 files touched, cross-language work | claude-opus-4-7 |
+| audit | security audit, threat model, compliance review, PE audit, incident postmortem | claude-opus-4-7 (LOCKED) |
+
+> Note: Anthropic resolves the alias `claude-haiku-4-5` to the latest minor.
+> For grader determinism we additionally pin a dated minor in `tests/tools/grader-pin.txt`.
+
+**Hard-locked Opus zones — NEVER downshift**:
+- Anything under `/home/criznguyen/projects/fansipan/` (FANSIPAN ABSOLUTE RULE)
+- Files matching `**/auth/**`, `**/security/**`, `**/billing/**`, `**/migrations/**`
+- Prompts containing: `audit`, `security`, `production`, `threat model`, `refactor architecture`, `incident`, `compliance`, `migration`
+- Any `docs/sdlc/security/**` or `docs/sdlc/principle-engineer/**` deliverable
+- Destructive shell: `rm -rf`, `git push --force`, `git reset --hard`
+
+**Auto-escalate to Opus** if any of: a Sonnet/Haiku iteration produced a failed test/lint/refusal; the diff exceeded 150 changed lines; the prompt mentions >5 files; the user said "review" or "are you sure"; context utilization passed 35% of the window; >20 tests generated in one turn.
+
+**Long-context special case**: for browse-heavy work >50K tokens, pin `claude-opus-4-6` (not 4.7) — Opus 4.7 has a -4.4pp BrowseComp regression vs 4.6.
+
+**Auto-downshift permitted** when: task fits a single Read/Grep/Glob; output is structured (JSON/YAML/list); no code execution; no architectural decision; no irreversible side effects; ≤3 logical reasoning steps required.
+
+**Kill switch**: `export CLAUDE_PIN_MODEL=claude-opus-4-7` in env disables ALL downshifts for the session. Use for Fansipan, audits, or whenever quality > cost.
+
+<!-- CQR-A END ================================================================
+Disable (session): export CLAUDE_PIN_MODEL=claude-opus-4-7 in shell (immediate, no file edit)
+Disable (permanent): add that export to ~/.bashrc or ~/.zshrc
+Re-enable: unset CLAUDE_PIN_MODEL (or remove from shell profile)
+Delete block: remove this file's full content from ~/.claude/CLAUDE.md
+Escalate to user: quality misses >2/week sustained OR spend drop <10% after 60 days
+========================================================================= -->

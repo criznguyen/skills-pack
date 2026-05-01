@@ -1,0 +1,26 @@
+# class<TAB>primitive<TAB>example-error-pattern<TAB>example-action
+# Patterns are case-insensitive substring matches. Lines starting with `#` are comments.
+# Hand-edit to extend; the hook reads this file every invocation (no daemon, no cache).
+transient	retry-with-backoff	rate limit	wait 2^n seconds, retry up to 3 times
+transient	retry-with-backoff	429	wait 2^n seconds, retry up to 3 times
+transient	retry-with-backoff	timeout	retry once with longer timeout
+transient	retry-with-backoff	temporary failure	retry with backoff
+transient	retry-with-backoff	try again	retry once
+transient	retry-with-backoff	resource temporarily unavailable	retry with backoff
+config-drift	surface-and-ask	not found in environment	surface missing env var to operator
+config-drift	surface-and-ask	permission denied	surface chmod / ownership question to operator
+config-drift	surface-and-ask	unauthorized	surface stale-token question to operator
+config-drift	surface-and-ask	invalid token	surface token-rotation question to operator
+config-drift	surface-and-ask	expired	surface credential-rotation question to operator
+config-drift	surface-and-ask	command not found	surface PATH or install question to operator
+logic-error	fix-implementation	TypeError	read call site; fix type
+logic-error	fix-implementation	AssertionError	read assertion; fix invariant
+logic-error	fix-implementation	NullPointerException	read call site; fix nil-handling
+logic-error	fix-implementation	undefined is not a function	read call site; fix import
+logic-error	fix-implementation	cannot read property	read call site; fix object shape
+external-failure	escalate-to-human	502	stop; tell operator upstream is 502
+external-failure	escalate-to-human	503	stop; tell operator service unavailable
+external-failure	escalate-to-human	504	stop; tell operator gateway timeout
+external-failure	escalate-to-human	connection refused	stop; tell operator service is down
+external-failure	escalate-to-human	service unavailable	stop; tell operator service is down
+external-failure	escalate-to-human	internal server error	stop; tell operator upstream 500

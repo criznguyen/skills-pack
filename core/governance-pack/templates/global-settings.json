@@ -1,0 +1,103 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "_comment": "governance-pack global settings template — copy/merge into ~/.claude/settings.json. Composes with core-config (3 hooks) and adds 4 enterprise extras: audit-gate, deny-prod-paths, no-coauthor, telemetry.",
+  "permissions": {
+    "defaultMode": "plan",
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(**/.env)",
+      "Read(**/.env.*)",
+      "Read(./secrets/**)",
+      "Read(**/secrets/**)",
+      "Read(**/*.pem)",
+      "Read(**/*.key)",
+      "Read(**/id_rsa*)",
+      "Bash(curl *)",
+      "Bash(wget *)",
+      "Bash(rm -rf /*)",
+      "Bash(rm -rf ~/*)",
+      "Bash(git push --force *)",
+      "Bash(git push -f *)",
+      "Bash(git reset --hard *)",
+      "Bash(terraform destroy *)",
+      "Bash(kubectl delete *)",
+      "WebFetch"
+    ],
+    "allow": [
+      "WebFetch(domain:docs.claude.com)",
+      "WebFetch(domain:code.claude.com)",
+      "WebFetch(domain:platform.claude.com)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${HOME}/.claude/hooks/block-destructive.sh",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "${HOME}/.claude/hooks/governance-pack/no-coauthor-trailer.sh",
+            "timeout": 5000
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${HOME}/.claude/hooks/pre-edit-stash.sh",
+            "timeout": 10000
+          },
+          {
+            "type": "command",
+            "command": "${HOME}/.claude/hooks/governance-pack/deny-prod-paths.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/lint-touched.sh",
+            "timeout": 30000
+          }
+        ]
+      },
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${HOME}/.claude/hooks/governance-pack/telemetry.sh",
+            "timeout": 3000
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${HOME}/.claude/hooks/governance-pack/audit-gate.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ]
+  }
+}

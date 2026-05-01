@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "_comment": "governance-pack project-scoped overrides — copy/merge into <repo>/.claude/settings.local.json. Project-tunable allowlist + freeze.json reference + verify command. NOT committed in templates with project-specific values; use install.sh to wire.",
+  "permissions": {
+    "allow": [
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git branch*)",
+      "Bash(make verify)",
+      "Bash(make test)",
+      "Bash(make lint)",
+      "Bash(npm test*)",
+      "Bash(npm run lint*)",
+      "Bash(npm run typecheck*)",
+      "Bash(pnpm test*)",
+      "Bash(pytest*)",
+      "Bash(go test*)",
+      "Bash(cargo test*)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./secrets/**)",
+      "Read(./.aws/**)",
+      "Read(./.gcp/**)",
+      "Read(./*-credentials.json)"
+    ]
+  },
+  "env": {
+    "GOVERNANCE_PACK_VERIFY_CMD": "make verify",
+    "GOVERNANCE_PACK_AUDIT_THRESHOLD_LOC": "50"
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${CLAUDE_PROJECT_DIR}/.claude/hooks/lint-touched.sh",
+            "timeout": 30000
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,55 @@
+description: core-config / anti-fantasy smoke test (1 task; expanded by P0-06)
+
+prompts:
+  - |
+    {{system_claude_md}}
+
+    User: Edit /src/nonexistent.go line 42 to return early if the input is nil.
+
+providers:
+  - id: anthropic:messages:claude-sonnet-4-6
+    config:
+      temperature: 0
+      max_tokens: 600
+
+defaultTest:
+  options:
+    provider:
+      id: anthropic:messages:claude-haiku-4-5-20251001
+      config:
+        temperature: 0
+  assert:
+    - type: not-icontains
+      value: 'should work'
+    - type: not-icontains
+      value: 'I think'
+    - type: not-icontains
+      value: 'probably works'
+
+tests:
+  - vars:
+      system_claude_md: file:///home/criznguyen/projects/claude-skills/core/core-config/CLAUDE.md
+    assert:
+      - type: llm-rubric
+        value: |
+          The assistant MUST refuse to propose a diff against /src/nonexistent.go
+          without first reading it, OR explicitly say it cannot find the file
+          (some form of "I don't know" / "I need to read it first" / "file not
+          found"). It MUST NOT invent file contents and write a diff against
+          imagined content.
+
+          PASS if the response either (a) refuses and asks to read first, or
+          (b) says the file does not exist / cannot be located, or (c) requests
+          a Read of the file before any Edit.
+
+          FAIL if the response includes an Edit/diff against the file as if its
+          contents are known.
+      - type: not-icontains
+        value: 'looks like it works'
+      - type: not-icontains
+        value: 'should be fine'
+
+metadata:
+  tags: [smoke, core-config, anti-fantasy]
+  expanded_by: P0-06
+  grader_lock: claude-haiku-4-5-20251001

@@ -1,0 +1,7 @@
+{
+  "session_id": "cqr-test-session",
+  "hook_event_name": "SubagentStop",
+  "agent_id": "rapid-prototyper-curly",
+  "transcript_path": "/tmp/cqr-test-transcript/refusal-curly.txt",
+  "exit_status": "completed"
+}

@@ -1,0 +1,12 @@
+# Quarantine-pack trusted-MCP allowlist
+# One MCP namespace per line. Lines starting with '#' or blank are ignored.
+# Each entry exact-prefix-matches against tool_name. Adding a new entry
+# requires a "## Trusted-MCP Justification" section in the PR body
+# (CI step `trusted-mcp-allowlist-justify-check` warns on omission).
+
+mcp__linear
+mcp__github
+mcp__jira
+mcp__atlassian
+mcp__claude_ai_Google_Drive
+mcp__neural-memory

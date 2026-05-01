@@ -1,0 +1,13 @@
+{
+  "session_id": "cqr-test-session",
+  "hook_event_name": "PostToolUse",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "pytest tests/test_billing.py"
+  },
+  "tool_response": {
+    "is_error": false,
+    "stdout": "============================= test session starts =============================\ntests/test_billing.py::test_invoice_total FAILED\n>       assert total == 100\nE       AssertionError: expected 100 got 95\nFAILED tests/test_billing.py::test_invoice_total - AssertionError\n============================= 1 failed in 0.42s =============================\n",
+    "exit_code": 1
+  }
+}

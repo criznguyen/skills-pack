@@ -1,0 +1,141 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/criznguyen/claude-skills/core/audit/schemas/finding.json",
+  "title": "audit-finding",
+  "description": "A single severity-tagged finding emitted by the audit sub-agent. Conforms to the structure mandated by core/audit/prompts/system.md Step 4 and the V1.1-AUDIT.md report style.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "cycle",
+    "status",
+    "severity",
+    "dimension",
+    "where",
+    "description",
+    "recommended_fix",
+    "references"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Stable identifier in <DIM>-<NNN> form (ADOPT-02 v1.1.1). DIM is a 2-8 char uppercase token naming the finding domain (e.g. SEC, PE, AUDIT, INPUT); NNN is a 3-digit zero-padded counter monotonically incremented within a single report. The dimension token carries no severity semantics.",
+      "pattern": "^[A-Z]{2,8}-[0-9]{3}$",
+      "examples": [
+        "SEC-001",
+        "PE-042",
+        "AUDIT-007"
+      ]
+    },
+    "cycle": {
+      "type": "integer",
+      "description": "Audit cycle counter (ADOPT-02 v1.1.1). 1 = first audit pass; 2 = re-audit after implementer addressed cycle-1 findings; 3 = final retry. After cycle 3 a finding MUST be ESCALATED rather than re-cycled — escalation forces a human decision instead of perpetual loops.",
+      "enum": [1, 2, 3]
+    },
+    "status": {
+      "type": "string",
+      "description": "Lifecycle status of the finding (ADOPT-02 v1.1.1). OPEN = newly emitted, awaiting fix; IN-PROGRESS = implementer is actively addressing it; RESOLVED = fix verified by re-audit; ESCALATED = unresolved after cycle 3 (human owner required); ACCEPTED-RISK = explicit human sign-off to ship without fix (allowed only for MEDIUM/LOW/INFO; CRITICAL/HIGH retain zero-deferral).",
+      "enum": ["OPEN", "IN-PROGRESS", "RESOLVED", "ESCALATED", "ACCEPTED-RISK"]
+    },
+    "severity": {
+      "type": "string",
+      "description": "Severity level on the charter v1.1 §6.1 scale. CRITICAL and HIGH are zero-deferral. Auditor MUST NOT downshift severity to make merge easier (severity-laundering guard).",
+      "enum": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]
+    },
+    "dimension": {
+      "type": "string",
+      "description": "Audit dimension. Pick the dimension that primarily describes the defect; allow a second finding under the other dimension only when the framings genuinely differ (panel:E3 row 18, 60-70% overlap expected).",
+      "enum": ["security", "pe"]
+    },
+    "where": {
+      "type": "object",
+      "description": "Location of the defect. Must be a concrete file:line range the auditor has personally Read; orphan findings (no file:line) are forbidden.",
+      "additionalProperties": false,
+      "required": ["file", "line_start", "line_end"],
+      "properties": {
+        "file": {
+          "type": "string",
+          "description": "Repo-relative path. POSIX separators.",
+          "minLength": 1,
+          "pattern": "^[^/].*$"
+        },
+        "line_start": {
+          "type": "integer",
+          "description": "1-indexed start line.",
+          "minimum": 1
+        },
+        "line_end": {
+          "type": "integer",
+          "description": "1-indexed inclusive end line. Equals line_start for a single-line finding.",
+          "minimum": 1
+        },
+        "secondary_files": {
+          "type": "array",
+          "description": "Additional files implicated by the finding. Useful when a defect spans multiple files; the primary file:line stays in line_start/line_end.",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["file", "line_start", "line_end"],
+            "properties": {
+              "file": { "type": "string", "minLength": 1 },
+              "line_start": { "type": "integer", "minimum": 1 },
+              "line_end": { "type": "integer", "minimum": 1 }
+            }
+          }
+        }
+      }
+    },
+    "description": {
+      "type": "string",
+      "description": "One paragraph: what the code does, why it is wrong against the spec or threat-model, why this severity. No prose flourishes; evidence-grounded.",
+      "minLength": 30,
+      "maxLength": 1500
+    },
+    "recommended_fix": {
+      "type": "string",
+      "description": "One paragraph: what the implementer should change. Concrete; reference function names or line numbers where possible. Auditor does NOT modify code; this is guidance only.",
+      "minLength": 20,
+      "maxLength": 1500
+    },
+    "references": {
+      "type": "array",
+      "description": "Sources cited in support of this finding. Mix of panel finding IDs (e.g. 'panel:E1 F5'), charter sections (e.g. 'charter v1.1 §2.3'), checklist items (e.g. 'security-checklist A1'), and external URLs.",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "minLength": 3,
+        "maxLength": 256
+      }
+    },
+    "checklist_item": {
+      "type": "string",
+      "description": "Optional pointer to the specific checklist line item that was marked [!] for this finding (e.g. 'A1', 'P3'). Aids traceability between Checklist section and Findings table in the report.",
+      "pattern": "^[A-Z][0-9]{1,2}$"
+    },
+    "evidence": {
+      "type": "object",
+      "description": "Optional excerpt of the offending code (≤200 chars) and an optional grep/glob query the auditor used to corroborate. NOT for prose narrative.",
+      "additionalProperties": false,
+      "properties": {
+        "code_excerpt": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "verified_via": {
+          "type": "string",
+          "description": "How the auditor confirmed (e.g. 'Read auth/handler.go:138-152', 'Grep for f-string in handler files').",
+          "maxLength": 256
+        }
+      }
+    },
+    "tags": {
+      "type": "array",
+      "description": "Optional free-form tags. Helps downstream filtering. Case-preserving (e.g. `OWASP:A03`, `STRIDE:E`, or lowercase `pii:high`, `cwe-89`).",
+      "items": {
+        "type": "string",
+        "pattern": "^[A-Za-z][A-Za-z0-9:_.-]{1,63}$"
+      }
+    }
+  }
+}

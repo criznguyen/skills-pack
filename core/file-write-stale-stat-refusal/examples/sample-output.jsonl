@@ -1,0 +1,3 @@
+{"event":"file-stat-check","ts":"2026-04-29T08:30:00Z","tool":"Edit","decision":"refused","file_path":"/repo/src/x.go","drift_seconds":42,"session_id":"sess-A"}
+{"event":"file-stat-check","ts":"2026-04-29T08:30:05Z","tool":"Write","decision":"pass","file_path":"/repo/new.txt","drift_seconds":0,"session_id":"sess-A"}
+{"event":"file-stat-check","ts":"2026-04-29T08:30:12Z","tool":"Edit","decision":"cooldown","file_path":"/repo/foo.go","drift_seconds":2,"session_id":"sess-A"}

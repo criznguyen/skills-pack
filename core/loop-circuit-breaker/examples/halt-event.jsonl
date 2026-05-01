@@ -1,0 +1,4 @@
+{"event":"loop-circuit-breaker","ts":"2026-04-29T08:30:00Z","counter":"iteration_count","value":151,"ceiling":150,"action":"halt","session_id":"sess-A"}
+{"event":"loop-circuit-breaker","ts":"2026-04-29T09:15:00Z","counter":"usd_spent","value":25.5,"ceiling":25.0,"action":"halt","session_id":"sess-B"}
+{"event":"loop-circuit-breaker","ts":"2026-04-29T10:00:00Z","counter":"hash_collisions","value":3,"ceiling":3,"action":"halt","session_id":"sess-C"}
+{"event":"loop-circuit-breaker","ts":"2026-04-29T10:05:00Z","counter":"bypass","value":0,"ceiling":0,"action":"bypass","session_id":"sess-C"}

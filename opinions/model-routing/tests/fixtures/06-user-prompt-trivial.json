@@ -1,0 +1,6 @@
+{
+  "session_id": "cqr-test-session-2",
+  "hook_event_name": "UserPromptSubmit",
+  "cwd": "/home/criznguyen/projects/some-other-repo",
+  "user_message": "summarize the README.md and tell me what this project does"
+}

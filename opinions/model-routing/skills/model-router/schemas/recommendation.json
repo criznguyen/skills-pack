@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://criznguyen.dev/schemas/model-router/recommendation.json",
+  "title": "ModelRouterRecommendation",
+  "description": "Output of the model-router skill: a single, deterministic model recommendation for a Claude Code task. Returned as a structured JSON object with no surrounding prose.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "model",
+    "class",
+    "confidence",
+    "reason",
+    "escalation_triggers_seen"
+  ],
+  "properties": {
+    "model": {
+      "type": "string",
+      "description": "Recommended Claude model ID. Must be one of the four approved IDs unless overridden by CLAUDE_PIN_MODEL.",
+      "enum": [
+        "claude-opus-4-7",
+        "claude-opus-4-6",
+        "claude-sonnet-4-6",
+        "claude-haiku-4-5",
+        "claude-opus-4-5"
+      ]
+    },
+    "class": {
+      "type": "string",
+      "description": "Task classification produced by task-class-routing. 'unknown' is allowed only when a hard fence short-circuits before classification runs.",
+      "enum": [
+        "trivial",
+        "small",
+        "feature",
+        "system",
+        "audit",
+        "unknown"
+      ]
+    },
+    "confidence": {
+      "type": "number",
+      "description": "Confidence in the recommendation. Floor of 0.9 for any fence/role/destructive lock. Below 0.55 means the caller should ask the user before downshifting.",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "reason": {
+      "type": "string",
+      "description": "Primary reason code. The highest-priority signal that determined the recommendation.",
+      "enum": [
+        "session-pin",
+        "lock-opus-flag",
+        "path-fence-fansipan",
+        "path-fence-sensitive",
+        "path-fence-sdlc-audit",
+        "keyword-fence",
+        "destructive-shell-fence",
+        "role-fence",
+        "tripwire-2fail",
+        "tripwire-1fail",
+        "class-audit",
+        "class-map",
+        "browsecomp-pin"
+      ]
+    },
+    "escalation_triggers_seen": {
+      "type": "array",
+      "description": "Ordered list of every escalation trigger or pin that fired during routing. Empty array means the class-map output was used unchanged.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "session-pin",
+          "lock-opus-flag",
+          "tripwire-1fail",
+          "tripwire-2fail",
+          "diff-size",
+          "file-count",
+          "cross-file-rename",
+          "edit-count",
+          "test-count",
+          "cross-language",
+          "plan-mode",
+          "subagent-research",
+          "context-utilization",
+          "browsecomp-pin"
+        ]
+      },
+      "uniqueItems": false
+    },
+    "fence_hit": {
+      "type": "string",
+      "description": "The matched keyword, path glob, or role label that triggered a fence. Empty string when no fence fired.",
+      "default": ""
+    },
+    "notes": {
+      "type": "string",
+      "description": "Optional clarifying note (≤140 chars). Only set when the recommendation needs clarification beyond the reason code.",
+      "maxLength": 140
+    }
+  }
+}

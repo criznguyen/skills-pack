@@ -1,0 +1,33 @@
+# Subject: refactor(auth/session): add debug logging
+#
+diff --git a/src/auth/session.py b/src/auth/session.py
+index abc1234..def5678 100644
+--- a/src/auth/session.py
++++ b/src/auth/session.py
+@@ -1,16 +1,21 @@
+ import logging
++from typing import Optional
+
+-logger = logging.getLogger('auth.session')
+-_session_cache = {}
++logger = logging.getLogger("auth.session")
++_session_cache: dict = {}
+
+
+-def load_session(session_id):
+-    if not session_id:
++def load_session(session_id: str) -> Optional[dict]:
++    if session_id == "":
+         return None
+-    logger.info('loading session %s', session_id)
++    logger.info("loading session %s", session_id)
++    logger.debug("session lookup started for sid=%s", session_id)
+     return _session_cache.get(session_id)
+
+
+-def store_session(session_id, payload):
+-    logger.info('storing session %s', session_id)
++def store_session(session_id: str, payload: dict) -> None:
++    logger.info("storing session %s", session_id)
++    logger.debug("session store completed for sid=%s", session_id)
+     _session_cache[session_id] = payload

@@ -1,0 +1,118 @@
+# tests/tasks.yaml — golden tasks for worktree-spawn (P0-04).
+#
+# Promptfoo-compatible `exec:` provider format. Runs against the spawn.sh /
+# cleanup.sh / list.sh scripts directly — no LLM in the loop, since the
+# safety properties are deterministic.
+#
+# Run with the bundled shell runner (zero dependencies):
+#   ./tests/run-tests.sh
+#
+# Run with promptfoo (once P0-06 lands):
+#   npx promptfoo eval -c tests/tasks.yaml --tag worktree-spawn
+#
+# Required environment:
+#   - bash, git, python3 (used by spawn.sh template renderer)
+#
+# Each task creates a fresh fixture repo under a temp dir, so tasks are
+# independent and reorderable.
+
+description: "core/worktree-spawn — cap enforcement + safe lifecycle"
+
+# Pinned grader policy (mirrors roadmap §8.3); unused for these deterministic
+# tests but included so this file slots into the v1 eval skeleton untouched.
+defaultTest:
+  options:
+    grader: claude-haiku-4-5-20251001
+    temperature: 0
+    repeat: 1   # deterministic shell tests don't need N=3
+
+providers:
+  - id: "exec"
+
+tests:
+
+  # ---------------------------------------------------------------------------
+  - description: "cap-pass: spawning 3 worktrees succeeds and creates exactly 3"
+    vars:
+      cmd: |
+        set -e
+        TMP="$(mktemp -d -t wt-cap-pass-XXXXXX)"
+        trap 'rm -rf "$TMP"' EXIT
+        REPO="$TMP/repo"
+        SCRIPTS="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)/scripts"
+        FIXTURES="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)/tests/fixtures"
+        bash "$FIXTURES/init-repo.sh" "$REPO"
+        cd "$REPO"
+        bash "$SCRIPTS/spawn.sh" cap-pass 3 --scope "cap-pass test" >/tmp/wt-cap-pass.log 2>&1
+        N=$(git worktree list --porcelain | grep -c '^worktree ')
+        # main + 3 spawned = 4
+        if [ "$N" -ne 4 ]; then
+          echo "FAIL: expected 4 entries in worktree list (main + 3), got $N" >&2
+          cat /tmp/wt-cap-pass.log >&2
+          exit 1
+        fi
+        # Each spawned worktree must contain CLAUDE.md mentioning siblings.
+        for d in .worktrees/cap-pass-1 .worktrees/cap-pass-2 .worktrees/cap-pass-3; do
+          [ -f "$d/CLAUDE.md" ] || { echo "FAIL: missing $d/CLAUDE.md" >&2; exit 1; }
+          [ -f "$d/FEATURE-CHARTER.md" ] || { echo "FAIL: missing $d/FEATURE-CHARTER.md" >&2; exit 1; }
+          grep -q "Coordination — sibling worktrees" "$d/CLAUDE.md" \
+            || { echo "FAIL: $d/CLAUDE.md missing sibling section" >&2; exit 1; }
+        done
+        # Worktree 1 must list worktree 2 and worktree 3 as siblings.
+        grep -q "wt/cap-pass-2" .worktrees/cap-pass-1/CLAUDE.md \
+          || { echo "FAIL: worktree 1 does not list sibling 2" >&2; exit 1; }
+        grep -q "wt/cap-pass-3" .worktrees/cap-pass-1/CLAUDE.md \
+          || { echo "FAIL: worktree 1 does not list sibling 3" >&2; exit 1; }
+        echo "PASS"
+    assert:
+      - type: contains
+        value: "PASS"
+      - type: not-contains
+        value: "FAIL:"
+
+  # ---------------------------------------------------------------------------
+  - description: "cap-fail: spawning a 4th worktree must refuse with clear message and exit 3"
+    vars:
+      cmd: |
+        set +e
+        TMP="$(mktemp -d -t wt-cap-fail-XXXXXX)"
+        trap 'rm -rf "$TMP"' EXIT
+        REPO="$TMP/repo"
+        SCRIPTS="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)/scripts"
+        FIXTURES="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)/tests/fixtures"
+        bash "$FIXTURES/init-repo.sh" "$REPO"
+        cd "$REPO"
+        # First fill the cap.
+        bash "$SCRIPTS/spawn.sh" cap-fail 3 --scope "fill the cap" >/dev/null 2>&1
+        if [ $? -ne 0 ]; then
+          echo "FAIL: setup spawn of 3 itself failed" >&2
+          exit 1
+        fi
+        # Now attempt a 4th. Must fail with exit 3 and the canonical message.
+        OUT="$(bash "$SCRIPTS/spawn.sh" cap-fail 1 --scope "this should be rejected" 2>&1)"
+        RC=$?
+        echo "--- spawn.sh output ---"
+        echo "$OUT"
+        echo "--- exit code: $RC ---"
+        if [ "$RC" -ne 3 ]; then
+          echo "FAIL: expected exit 3, got $RC" >&2
+          exit 1
+        fi
+        echo "$OUT" | grep -q "cap reached" \
+          || { echo "FAIL: missing 'cap reached' in error message" >&2; exit 1; }
+        echo "$OUT" | grep -q "merge or delete one before spawning more" \
+          || { echo "FAIL: missing canonical guidance in error message" >&2; exit 1; }
+        # Repo must still have exactly the 3 originally-spawned worktrees (no partial creation).
+        N=$(git worktree list --porcelain | grep -c '^worktree ')
+        if [ "$N" -ne 4 ]; then
+          echo "FAIL: 4th attempt left partial state (worktree count = $N, expected 4)" >&2
+          exit 1
+        fi
+        echo "PASS"
+    assert:
+      - type: contains
+        value: "PASS"
+      - type: contains
+        value: "cap reached"
+      - type: not-contains
+        value: "FAIL:"

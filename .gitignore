@@ -1,0 +1,80 @@
+# ─────────────────────────────────────────────
+# claude-skills .gitignore
+# ─────────────────────────────────────────────
+
+# OS junk
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Editor / IDE
+.vscode/
+.idea/
+*.iml
+.vim/
+*.sublime-project
+*.sublime-workspace
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+*.egg
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage
+.coverage.*
+htmlcov/
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-store/
+pnpm-debug.log
+pnpm-debug.log*
+
+# Build / output
+dist/
+build/
+out/
+*.tsbuildinfo
+coverage/
+.eval/
+.nyc_output/
+
+# Project-local orchestration (do NOT ship)
+.workspaces/
+.neuralmemory/
+.scripts/
+.cache/
+
+# Promptfoo
+.promptfoo/
+promptfoo-cache/
+
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+*.p12
+secrets.json
+.anthropic/
+.aws/
+gcp-key*.json
+service-account*.json
+
+# Logs / scratch
+*.log
+/tmp/agent-*
+/tmp/build-*

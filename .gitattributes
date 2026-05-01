@@ -1,0 +1,25 @@
+# Default: text, normalize to LF on commit
+* text=auto eol=lf
+
+# Source code
+*.sh   text eol=lf diff=bash
+*.bash text eol=lf diff=bash
+*.py   text eol=lf
+*.md   text eol=lf
+*.yaml text eol=lf
+*.yml  text eol=lf
+*.json text eol=lf
+*.toml text eol=lf
+*.ini  text eol=lf
+
+# Binaries
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.zip  binary
+*.tar  binary
+*.tgz  binary
+*.gz   binary

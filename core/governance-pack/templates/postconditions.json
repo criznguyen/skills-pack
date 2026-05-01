@@ -1,0 +1,9 @@
+{
+  "$schema": "https://json.schemastore.org/claude-skills-postconditions.json",
+  "_comment": "feat:postcondition-hook config — copy/merge into ~/.claude/postconditions.json. Operator-owned. Hand-edit `mode` to flip shadow→blocking after the 30-day FP-measurement window (see core/governance-pack/README.md §'Phase 2.1 enforcement').",
+  "mode": "shadow",
+  "default_class_gate": ["feature", "system-change", "forced", "unknown"],
+  "timeout_seconds": 5,
+  "promote_after_days": 30,
+  "max_stdout_chars": 200
+}

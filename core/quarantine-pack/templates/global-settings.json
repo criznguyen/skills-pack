@@ -1,0 +1,17 @@
+{
+  "_comment": "quarantine-pack PostToolUse matcher — merged into ~/.claude/settings.json by core/governance-pack/install.sh Step 8.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "mcp__.*|WebFetch|Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "${HOME}/.claude/hooks/quarantine-pack/wrap-mcp-output.sh",
+            "timeout": 5000
+          }
+        ]
+      }
+    ]
+  }
+}

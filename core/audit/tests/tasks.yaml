@@ -1,0 +1,154 @@
+# core/audit/tests/tasks.yaml
+# Promptfoo task: planted-SQLi audit must be caught with severity >= HIGH and dimension=security.
+#
+# This file is consumed by promptfooconfig.yaml at the repo root (P0-06: tests/ skeleton +
+# golden-task-eval). Run via:  npx promptfoo eval -c promptfooconfig.yaml --tag audit
+#
+# The task spawns the audit sub-agent against a synthetic diff that introduces
+# core/audit/tests/fixtures/sqli-fixture.py. The fixture contains one real SQL injection
+# (f-string into the SQL query) and the auditor MUST flag it. Failure to flag is a
+# regression that blocks merge to main.
+#
+# Grader: claude-haiku-4-5-20251001 (pinned per skills-roadmap-v1.1.md §8.3). Temperature 0.
+# Each assertion runs N=3; ≥2/3 pass required (R7 §3.4 mitigation).
+
+description: "audit skill — planted-bug regression test"
+
+tags:
+  - audit
+  - smoke
+  - p0-02
+
+# Default vars usable from {{var}} interpolations below
+defaultTest:
+  options:
+    transform: "output.toString()"  # report content is a string
+
+prompts:
+  - id: audit-planted-sqli-spawn
+    label: "Spawn audit against synthetic diff with planted SQLi"
+    raw: |
+      You are running the `audit` skill from claude-skills core/audit.
+
+      Read, in order:
+        1. {{cwd}}/core/audit/prompts/independence-preamble.md
+        2. {{cwd}}/core/audit/prompts/system.md
+        3. {{cwd}}/core/audit/prompts/security-checklist.md
+        4. {{cwd}}/core/audit/prompts/pe-checklist.md
+
+      Then audit the following synthetic diff. Treat it as if a stranger added the file
+      core/audit/tests/fixtures/sqli-fixture.py to the repository in a single commit.
+      Spec, threat-model, and decisions log are inline below; treat them as authoritative
+      project context.
+
+      <spec id="planted-sqli-test">
+        # Spec — user search endpoint (synthetic)
+        ## Success criteria
+        - SC1: search_users() accepts a partial email substring and returns matching rows.
+        - SC2: search_users() must NOT permit SQL injection from the `query` argument.
+        - SC3: All inputs from the HTTP boundary are treated as untrusted.
+      </spec>
+
+      <threat-model id="planted-sqli-test">
+        # Threat model
+        ## Trust boundaries
+        - HTTP request body is untrusted.
+        - The SQLite/PostgreSQL backend is trusted.
+        ## Adversaries
+        - External attacker with a valid session, attempting privilege escalation or data
+          exfiltration via crafted input.
+        ## In-scope attack classes
+        - SQL injection (A03:2021)
+        - Authorization bypass
+      </threat-model>
+
+      <decisions id="planted-sqli-test">
+        # Decisions
+        - 2026-04-28: Picked sqlite3 stdlib for the fixture; rejected SQLAlchemy because
+          it would hide the SQLi (parameterised by default).
+        - 2026-04-28: All DB access MUST use bind parameters; rejected the alternative of
+          "sanitise then concat" because it is well-known to be unsafe.
+      </decisions>
+
+      <diff>
+      diff --git a/core/audit/tests/fixtures/sqli-fixture.py b/core/audit/tests/fixtures/sqli-fixture.py
+      new file mode 100644
+      --- /dev/null
+      +++ b/core/audit/tests/fixtures/sqli-fixture.py
+      @@ -0,0 +1,62 @@
+      {{file:core/audit/tests/fixtures/sqli-fixture.py | indent: 6}}
+      </diff>
+
+      Apply the procedure in system.md exactly. Emit the report sections in order.
+      End your final message with the literal token `AUDIT-DONE id=planted-sqli-test verdict=<v> findings=<n>`.
+
+providers:
+  - id: anthropic:messages:claude-opus-4-7
+    label: "audit-opus-4-7"
+    config:
+      temperature: 0
+      max_tokens: 8000
+
+tests:
+  - description: "audit catches planted SQLi at >= HIGH severity"
+    vars:
+      cwd: "{{ env.CLAUDE_PROJECT_DIR }}"
+      file:core/audit/tests/fixtures/sqli-fixture.py: file://core/audit/tests/fixtures/sqli-fixture.py
+
+    assert:
+      # 1) Verdict must be BLOCK (a CRITICAL or HIGH finding triggers BLOCK per system.md Step 5)
+      - type: contains
+        value: "verdict=BLOCK"
+
+      # 2) The output must contain a CRITICAL or HIGH finding (case-sensitive enum)
+      - type: regex
+        value: '\b(CRITICAL|HIGH)\b'
+
+      # 3) The finding must reference the planted-bug fixture file by name
+      - type: contains
+        value: "sqli-fixture.py"
+
+      # 4) The finding must be on the security dimension
+      - type: contains
+        value: "security"
+
+      # 5) Must cite the specific class of bug (SQLi / SQL injection / injection)
+      - type: regex
+        value: '\b(SQL[- ]?[Ii]njection|SQLi|f-string)\b'
+
+      # 6) Must reference the security checklist item A1 (SQL/NoSQL injection) OR OWASP A03
+      - type: regex
+        value: '(security-checklist A1|A03:2021|A03:2021-Injection|OWASP A03)'
+
+      # 7) Must NOT silently rubber-stamp: explicit no-PASS-on-this-diff guard
+      - type: not-contains
+        value: "verdict=PASS"
+
+      # 8) DONE token must be present in the literal form (system.md Step 8 contract)
+      - type: regex
+        value: 'AUDIT-DONE id=planted-sqli-test verdict=BLOCK findings=[1-9][0-9]*'
+
+      # 9) LLM-rubric: confirm the finding meaningfully describes the SQLi
+      - type: llm-rubric
+        provider:
+          id: anthropic:messages:claude-haiku-4-5-20251001
+          config:
+            temperature: 0
+        value: |
+          The output is an audit report. Verify ALL of the following:
+          (a) At least one finding has severity CRITICAL or HIGH.
+          (b) That finding's `dimension` is `security`.
+          (c) That finding's `where` field references core/audit/tests/fixtures/sqli-fixture.py
+              and a line range that intersects the f-string SQL construction (around line 39).
+          (d) The finding's `description` correctly identifies the defect as SQL injection
+              caused by f-string / string-concatenation into a SQL statement.
+          (e) The finding's `recommended_fix` proposes parameterised queries (bind variables,
+              `?` placeholders, or equivalent) — NOT input sanitisation, NOT escaping, NOT
+              an allowlist regex.
+          (f) The verdict is BLOCK.
+          Return PASS only if all six conditions hold. Return FAIL otherwise with a one-line reason.
+
+# Negative-control / rubber-stamp guard:
+# A second test could be added here that supplies an EMPTY diff and asserts verdict=PASS
+# with zero findings. We keep that out of P0-02 scope (covered separately by the
+# delta-code-review empty-diff test in P0-06's task #5) — but it is the natural follow-on.

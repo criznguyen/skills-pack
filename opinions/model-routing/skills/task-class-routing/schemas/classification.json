@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://criznguyen.dev/schemas/task-class-routing/classification.json",
+  "title": "TaskClassification",
+  "description": "Output of the task-class-routing skill: deterministic classification of a Claude Code task into one of five tiers based on the signal ladder over prompt, files in scope, and tool plan.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "class",
+    "rationale",
+    "signals_used",
+    "files_in_scope",
+    "tie_break_applied"
+  ],
+  "properties": {
+    "class": {
+      "type": "string",
+      "description": "The classification tier. Ordered low-to-high cost: trivial < small < feature < system < audit. 'audit' is terminal — once set, no upgrade or downgrade is permitted.",
+      "enum": [
+        "trivial",
+        "small",
+        "feature",
+        "system",
+        "audit"
+      ]
+    },
+    "rationale": {
+      "type": "string",
+      "description": "Short explanation of why this class was chosen. Max 140 characters.",
+      "maxLength": 140,
+      "minLength": 1
+    },
+    "signals_used": {
+      "type": "array",
+      "description": "Ordered list of every rung in the signal ladder that fired. Deduplicated. Drawn from the controlled vocabulary below.",
+      "items": {
+        "type": "string",
+        "enum": [
+          "path",
+          "keyword",
+          "file-count",
+          "loc",
+          "tool-plan",
+          "reasoning-depth"
+        ]
+      },
+      "uniqueItems": true,
+      "minItems": 1
+    },
+    "files_in_scope": {
+      "type": "integer",
+      "description": "Number of distinct files mentioned in the prompt or globbed by the caller. 0 is valid (e.g., research task with no specific files).",
+      "minimum": 0
+    },
+    "loc_estimate": {
+      "type": ["integer", "null"],
+      "description": "LOC delta estimate used in Rung 4. Null when no estimate was available.",
+      "minimum": 0
+    },
+    "tie_break_applied": {
+      "type": "boolean",
+      "description": "True when conflicting signals forced an upgrade to the higher tier (e.g., trivial_kw matched but file-count > 5)."
+    }
+  }
+}

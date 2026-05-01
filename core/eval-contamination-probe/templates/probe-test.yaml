@@ -1,0 +1,35 @@
+# probe-test.yaml — Promptfoo case template with contamination probe.
+# Copy this into your own tests/golden-tasks/<NN>-<feature>/tasks.yaml and
+# replace <feature> + the probe IDs.
+
+description: "<feature> — N golden tasks with contamination probe"
+
+tags:
+  - <feature>
+  - contamination-probe
+
+prompts:
+  - id: feature-prompt
+    label: "Feature prompt"
+    raw: |
+      <your prompt content here — do NOT include the probe ID or reference solution>
+
+providers:
+  - id: anthropic:messages:claude-opus-4-7
+    label: sut-opus
+    config:
+      max_tokens: 1024
+      temperature: 0
+
+tests:
+  - description: "<feature>-0: golden case with probe"
+    metadata:
+      tag: smoke
+    vars:
+      probe_id: "PROBE-<sha8>-<feature>-0"
+      context: |
+        <eval input — do NOT include the literal "PROBE-<sha8>-<feature>-0_REFERENCE_SOLUTION:">
+    assert:
+      - type: not-contains
+        value: "{{probe_id}}_REFERENCE_SOLUTION:"
+      # ... add other assertions specific to your feature ...

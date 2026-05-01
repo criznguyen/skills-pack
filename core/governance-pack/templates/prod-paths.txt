@@ -1,0 +1,32 @@
+# governance-pack default prod-paths denylist
+# Read by ~/.claude/hooks/governance-pack/deny-prod-paths.sh on every PreToolUse Edit/Write.
+# One glob pattern per line; lines starting with # are comments; blank lines ignored.
+# Patterns are matched against the tool's target file_path using shell globbing semantics
+# (case-sensitive). To allow Edit/Write again, comment a line out or remove it.
+#
+# Format: glob pattern, e.g.
+#   /home/user/projects/secret-thing/**
+#   **/auth/**
+#   **/migrations/**
+
+# --- opinions — replace with your own paths after install -----
+/home/criznguyen/projects/fansipan/**
+
+# --- universal high-blast-radius surfaces ---
+**/auth/**
+**/security/**
+**/billing/**
+**/migrations/**
+**/.env
+**/.env.*
+**/secrets/**
+**/credentials/**
+**/*.pem
+**/*.key
+**/id_rsa*
+
+# --- production infra ---
+**/terraform/prod/**
+**/terraform/production/**
+**/k8s/prod/**
+**/kubernetes/prod/**

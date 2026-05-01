@@ -1,0 +1,108 @@
+# Promptfoo tasks for governance-pack
+# Run: npx promptfoo eval -c tests/tasks.yaml
+#
+# This is the planted-coauthor commit test (per spec hard-requirement).
+# Validates that hooks/no-coauthor-trailer.sh blocks `git commit` containing
+# `Co-Authored-By: Claude` (case-insensitive) but allows human co-authors through.
+#
+# Test execution model: each test invokes the hook script directly with a JSON
+# stdin payload that mimics what Claude Code would send. We assert exit code
+# and stderr message. No live Claude API call required.
+
+description: governance-pack hook regression tests
+
+prompts:
+  # Tests pipe the prompt as JSON stdin to the hook script.
+  - file://./hook-runner.sh
+
+providers:
+  - id: exec:bash
+    config:
+      command: bash
+
+tests:
+  # ----- T1: Co-Authored-By: Claude must be blocked --------------------
+  - description: T1 - planted Claude co-author trailer must be blocked
+    vars:
+      hook: ../hooks/no-coauthor-trailer.sh
+      payload: |
+        {
+          "tool_name": "Bash",
+          "tool_input": {
+            "command": "git commit -m \"feat: add login\\n\\nCo-Authored-By: Claude <noreply@anthropic.com>\""
+          }
+        }
+    assert:
+      - type: javascript
+        value: 'output.includes("BLOCKED") && output.includes("Co-Authored-By")'
+      - type: contains
+        value: governance-pack/no-coauthor-trailer
+
+  # ----- T2: Co-Authored-By: <human> must pass --------------------------
+  - description: T2 - human co-author must pass
+    vars:
+      hook: ../hooks/no-coauthor-trailer.sh
+      payload: |
+        {
+          "tool_name": "Bash",
+          "tool_input": {
+            "command": "git commit -m \"feat: add login\\n\\nCo-Authored-By: Jane Doe <jane@example.com>\""
+          }
+        }
+    assert:
+      - type: javascript
+        value: '!output.includes("BLOCKED")'
+
+  # ----- T3: case-insensitive Claude detection --------------------------
+  - description: T3 - case-insensitive match (co-authored-by lowercase)
+    vars:
+      hook: ../hooks/no-coauthor-trailer.sh
+      payload: |
+        {
+          "tool_name": "Bash",
+          "tool_input": {
+            "command": "git commit -m \"fix: bug\\n\\nco-authored-by: claude <noreply@anthropic.com>\""
+          }
+        }
+    assert:
+      - type: javascript
+        value: 'output.includes("BLOCKED")'
+
+  # ----- T4: anthropic.com email triggers block even without "Claude" name
+  - description: T4 - anthropic.com email triggers block
+    vars:
+      hook: ../hooks/no-coauthor-trailer.sh
+      payload: |
+        {
+          "tool_name": "Bash",
+          "tool_input": {
+            "command": "git commit -m \"chore: refactor\\n\\nCo-Authored-By: AI Helper <bot@anthropic.com>\""
+          }
+        }
+    assert:
+      - type: javascript
+        value: 'output.includes("BLOCKED")'
+
+  # ----- T5: non-commit Bash command must pass (scope discipline) ------
+  - description: T5 - non-commit bash command must pass through
+    vars:
+      hook: ../hooks/no-coauthor-trailer.sh
+      payload: |
+        {
+          "tool_name": "Bash",
+          "tool_input": {
+            "command": "ls -la"
+          }
+        }
+    assert:
+      - type: javascript
+        value: '!output.includes("BLOCKED")'
+
+  # ----- T6: malformed input must NOT block (graceful) -----------------
+  - description: T6 - malformed JSON must not block (graceful failure)
+    vars:
+      hook: ../hooks/no-coauthor-trailer.sh
+      payload: 'not json at all {{{'
+    assert:
+      - type: javascript
+        value: '!output.includes("BLOCKED")'

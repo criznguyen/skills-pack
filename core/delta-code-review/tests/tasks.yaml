@@ -1,0 +1,214 @@
+# Promptfoo task spec for the `delta-code-review` skill.
+#
+# Two tasks:
+#   1. `clean-no-findings`     — clean diff MUST produce `[]` (no hallucinated findings).
+#   2. `planted-bug-flagged`   — diff with a string-subtraction comparator MUST flag at least one BLOCK / logic-bug.
+#
+# Grader: claude-haiku-4-5-20251001, temperature 0, N=3, >= 2/3 pass required (per P0-06 SLO).
+#
+# Run locally:
+#   npx promptfoo eval -c core/delta-code-review/tests/tasks.yaml --tag smoke
+#
+# These tasks are the regression backbone for the skill. The empty-clean-diff test (#1) is what
+# stops the skill from inventing findings to look thorough — see roadmap §2.5 acceptance criterion
+# 3 ("Returns 'no issues' cleanly on a known-clean diff").
+
+description: "delta-code-review skill — 2 golden tasks (clean diff, planted-bug diff)"
+
+prompts:
+  - file://../prompts/review.md
+
+providers:
+  - id: anthropic:claude-sonnet-4-6
+    config:
+      temperature: 0
+      max_tokens: 4096
+
+defaultTest:
+  options:
+    provider:
+      id: anthropic:claude-haiku-4-5-20251001
+      config:
+        temperature: 0
+
+tests:
+  - description: "clean-no-findings — clean diff MUST produce empty findings array"
+    tags: [smoke, full]
+    metadata:
+      tag: smoke
+    vars:
+      diff_fixture: file://./fixtures/clean.diff
+    assert:
+      - type: not-contains
+        value: "BLOCK"
+      - type: not-contains
+        value: "SUGGEST"
+      - type: not-contains
+        value: "CRITICAL"
+      - type: not-contains
+        value: "HIGH"
+      - type: contains
+        value: "[]"
+      - type: contains
+        value: "0 BLOCK / 0 SUGGEST / 0 NIT"
+      - type: javascript
+        value: |
+          // v1.2 lazy-mdreport: on a clean diff, the model's trace MUST NOT
+          // claim it wrote `<id>.md`. The MD file is skipped per charter §2.1
+          // (absence-of-fact must produce absence-of-artifact). Heuristic:
+          // any literal mention of writing a `.md` artifact under
+          // delta-code-review/ is a fantasy claim and fails the test. Promptfoo
+          // cannot inspect FS side-effects, so this is a string-match guard
+          // over the model's output trace.
+          const raw = String(output);
+          const wroteMd = /\bwrit(e|ing|ten)\b[^\n]*delta-code-review\/[^\n]*\.md/i.test(raw)
+                       || /\bdocs\/sdlc\/delta-code-review\/REVIEW-[0-9]{3}\.md\b/i.test(raw);
+          return !wroteMd;
+      - type: llm-rubric
+        value: |
+          The output MUST be a JSON array followed by a one-line summary.
+          Pass criteria (ALL must hold):
+          1. The JSON array is exactly `[]` (empty).
+          2. The summary line says "0 BLOCK / 0 SUGGEST / 0 NIT".
+          3. There is no prose before the JSON array and no prose after the summary line.
+          4. The output does NOT invent any findings — no fabricated file paths, no fabricated
+             line numbers, no advice unrelated to the diff content.
+          Fail if any finding object appears in the output.
+
+  - description: "planted-bug-flagged — string subtraction comparator MUST be flagged BLOCK / logic-bug"
+    tags: [smoke, full]
+    metadata:
+      tag: smoke
+    vars:
+      diff_fixture: file://./fixtures/planted-bug.diff
+    assert:
+      - type: contains
+        value: "BLOCK"
+      - type: contains
+        value: "logic-bug"
+      - type: contains
+        value: "src/sort.ts"
+      - type: javascript
+        value: |
+          // Output should parse as JSON-array-then-summary. Find the array, parse it, and verify
+          // at least one finding flags the planted bug. We tolerate either a fenced code block
+          // (```json ... ```) or a raw array.
+          const raw = String(output);
+          const fenceMatch = raw.match(/```(?:json)?\s*([\s\S]*?)```/);
+          const jsonText = fenceMatch ? fenceMatch[1].trim() : raw.trim();
+          // Find the first `[` and matching `]`.
+          const start = jsonText.indexOf('[');
+          if (start === -1) return false;
+          // Naive bracket match — adequate for the test fixtures.
+          let depth = 0, end = -1;
+          for (let i = start; i < jsonText.length; i++) {
+            const c = jsonText[i];
+            if (c === '[') depth++;
+            else if (c === ']') { depth--; if (depth === 0) { end = i; break; } }
+          }
+          if (end === -1) return false;
+          let findings;
+          try { findings = JSON.parse(jsonText.slice(start, end + 1)); }
+          catch (e) { return false; }
+          if (!Array.isArray(findings) || findings.length === 0) return false;
+          const flaggedComparator = findings.some(f =>
+            f &&
+            f.severity === 'BLOCK' &&
+            f.category === 'logic-bug' &&
+            typeof f.file === 'string' && f.file.includes('sort') &&
+            typeof f.comment === 'string' &&
+            /string|comparator|subtract|NaN|locale/i.test(f.comment)
+          );
+          return flaggedComparator;
+      - type: llm-rubric
+        value: |
+          The output MUST flag the off-by-one / string-subtraction comparator on a sort function
+          in src/sort.ts as severity BLOCK with category logic-bug. The finding's `comment` field
+          should explain that subtracting strings yields NaN and produces undefined sort order.
+          The `suggested_fix` field should propose `localeCompare` or an equivalent string-aware
+          comparator. Pass if such a finding exists. Fail if every finding is SUGGEST or NIT, or
+          if the comparator bug is not flagged at all.
+
+  # ----- Karpathy-derived golden tasks (v1.1.4) -----------------------------
+  # Source spec: docs/research/karpathy-skills/panel/SYNTHESIS.md §10 acceptance gates.
+  # Canonical wording: docs/research/karpathy-skills/karpathy-attribution.md.
+
+  - description: "style-drift-during-refactor — bounded-refactor diff that flips quote style + adds type hints MUST be flagged as style drift (K-3.4)"
+    metadata:
+      tag: smoke
+    tags: [smoke, full]
+    vars:
+      diff_fixture: file://./fixtures/style-drift-during-refactor.diff
+    assert:
+      - type: contains
+        value: "style"
+      - type: llm-rubric
+        provider:
+          id: anthropic:claude-haiku-4-5-20251001
+          config:
+            temperature: 0
+        value: |
+          The diff is a bounded-refactor logging change in src/auth/session.py. The user-requested
+          change is adding `logger.debug(...)` statements. Alongside the requested change, the diff
+          ALSO flips the quote style on existing strings from single quotes to double quotes AND
+          adds type hints to function signatures that previously had none.
+          PASS if the auditor's output (JSON array) contains at least one finding that flags style
+          drift in this bounded-refactor — e.g. a `category: style` or `category: idiom` finding
+          whose `comment` references quote-style change, type-hint introduction, or a mismatch
+          between added lines and the existing module's style convention.
+          FAIL if the auditor produces only logic findings and ignores the style/type-hint drift,
+          OR if it produces an empty array.
+
+  - description: "tangential-edit-detection — diff with 1 unrelated edit alongside scoped change MUST surface the tangential line (K-3.7)"
+    metadata:
+      tag: smoke
+    tags: [smoke, full]
+    vars:
+      diff_fixture: file://./fixtures/tangential-edit-detection.diff
+    assert:
+      - type: contains
+        value: "format_user"
+      - type: llm-rubric
+        provider:
+          id: anthropic:claude-haiku-4-5-20251001
+          config:
+            temperature: 0
+        value: |
+          The diff in src/redis_client.py has a clear primary purpose: adding Redis timeout error
+          handling (the new `except redis.TimeoutError` block and the `logger.warning(...)` line in
+          the existing `except redis.ConnectionError`). It also contains ONE tangential edit: the
+          body of `format_user` was rewritten from `f"{user.name} <{user.email}>"` to
+          `f"{user.email} ({user.name})"`. That `format_user` change has no trace to the
+          timeout-handling user request.
+          PASS if the auditor's output contains at least one finding that surfaces the
+          `format_user` rewrite as out-of-scope, tangential, or "does not trace to the requested
+          change." Severity SUGGEST or higher acceptable.
+          FAIL if the auditor flags only the timeout-handling lines or produces an empty array.
+
+  - description: "unrelated-deletion-flagged — deleting an unrelated `# TODO` comment MUST be flagged as audit finding with decisions.md note recommendation (K-3.5)"
+    metadata:
+      tag: smoke
+    tags: [smoke, full]
+    vars:
+      diff_fixture: file://./fixtures/unrelated-deletion-flagged.diff
+    assert:
+      - type: contains
+        value: "decisions.md"
+      - type: contains
+        value: "TODO"
+      - type: llm-rubric
+        provider:
+          id: anthropic:claude-haiku-4-5-20251001
+          config:
+            temperature: 0
+        value: |
+          The diff in src/cache.py has the user-requested scope: bump CACHE_TTL from 300 to 600.
+          Alongside the bump, the diff also DELETES the line
+          `# TODO: revisit when we have feature flags wired up` — an unrelated deletion of
+          existing dead-code-style commentary.
+          PASS if the auditor's output contains at least one finding that:
+            (a) flags the TODO comment deletion as out-of-scope / unrelated, AND
+            (b) recommends surfacing the observation as a `decisions.md` note instead of deleting
+                the line.
+          The finding should reference `decisions.md` somewhere in `comment` or `suggested_fix`.
+          FAIL if the deletion is unmentioned or the `decisions.md` recommendation is missing.

@@ -1,0 +1,205 @@
+# Promptfoo eval suite for task-class-routing
+#
+# Run:
+#   promptfoo eval -c tests/tasks.yaml
+#
+# Tests cover all five classes plus tie-break, audit-path, audit-keyword,
+# tool-plan-only-trivial, file-count escalation, and LOC-driven feature.
+# Grader is pinned to Haiku 4.5 — classification is cheap pattern matching.
+
+description: "task-class-routing · classification regressions"
+
+prompts:
+  - file://../prompts/classify.md
+
+providers:
+  - id: anthropic:messages:claude-haiku-4-5
+    label: skill-under-test
+    config:
+      max_tokens: 384
+      temperature: 0
+
+defaultTest:
+  options:
+    provider:
+      id: anthropic:messages:claude-haiku-4-5
+      label: grader
+      config:
+        temperature: 0
+  assert:
+    - type: is-json
+      value:
+        type: object
+        required: ["class", "rationale", "signals_used", "files_in_scope", "tie_break_applied"]
+
+tests:
+  # ── 1. Trivial: README summary ─────────────────────────────────────────────
+  - description: "Summarize keyword + Read-only plan → trivial"
+    vars:
+      task: "summarize README.md in 5 bullets"
+      files_in_scope: ["README.md"]
+      tool_plan: ["Read"]
+      loc_hint: null
+    assert:
+      - type: javascript
+        value: |
+          const o = JSON.parse(output);
+          return o.class === "trivial"
+              && o.signals_used.includes("keyword");
+
+  # ── 2. Trivial: grep helper usage (single file mentioned) ─────────────────
+  - description: "Grep + show keyword + 1 file → trivial"
+    vars:
+      task: "show me where getCwd is defined"
+      files_in_scope: ["src/utils/path.ts"]
+      tool_plan: ["Grep", "Read"]
+      loc_hint: null
+    assert:
+      - type: javascript
+        value: |
+          const o = JSON.parse(output);
+          return o.class === "trivial";
+
+  # ── 3. Small: single-file bug fix ──────────────────────────────────────────
+  - description: "fix keyword + 1 file + 8 LOC → small"
+    vars:
+      task: "fix the off-by-one bug in pagination.ts when total is divisible by pageSize"
+      files_in_scope: ["src/lib/pagination.ts"]
+      tool_plan: ["Read", "Edit", "Bash"]
+      loc_hint: 8
+    assert:
+      - type: javascript
+        value: |
+          const o = JSON.parse(output);
+          return o.class === "small"
+              && o.signals_used.includes("keyword");
+
+  # ── 4. Small → feature upgrade via LOC estimate ───────────────────────────
+  - description: "fix keyword + 1 file + 180 LOC → feature (LOC upgrade)"
+    vars:
+      task: "rewrite the resolver in pagination.ts to use the new offset model — about 180 lines of changes"
+      files_in_scope: ["src/lib/pagination.ts"]
+      tool_plan: ["Read", "Edit", "Bash"]
+      loc_hint: 180
+    assert:
+      - type: javascript
+        value: |
+          const o = JSON.parse(output);
+          return o.class === "feature"
+              && o.signals_used.includes("loc");
+
+  # ── 5. Feature: 4-file CRUD endpoint ───────────────────────────────────────
+  - description: "implement keyword + 4 files → feature"
+    vars:
+      task: "implement /api/v2/users endpoint with full CRUD across 4 files including tests"
+      files_in_scope:
+        - "src/routes/users.ts"
+        - "src/controllers/users.ts"
+        - "src/services/users.ts"
+        - "tests/users.test.ts"
+      tool_plan: ["Read", "Edit", "Write", "Bash"]
+      loc_hint: 220
+    assert:
+      - type: javascript
+        value: |
+          const o = JSON.parse(output);
+          return o.class === "feature"
+              && o.signals_used.includes("keyword")
+              && o.signals_used.includes("file-count");
+
+  # ── 6. System: cross-module refactor with concurrency ─────────────────────
+  - description: "refactor + concurrency keywords + 8 files → system"
+    vars:
+      task: "refactor session-store across all middlewares to use Redis-backed atomic store; concurrency-sensitive"
+      files_in_scope:
+        - "src/middleware/session-cookie.ts"
+        - "src/middleware/session-bearer.ts"
+        - "src/middleware/csrf.ts"
+        - "src/services/session-store.ts"
+        - "src/services/session-redis.ts"
+        - "src/lib/atomic.ts"
+        - "tests/session-store.test.ts"
+        - "tests/session-redis.test.ts"
+      tool_plan: ["Read", "Edit", "Write", "Bash"]
+      loc_hint: 480
+    assert:
+      - type: javascript
+        value: |
+          const o = JSON.parse(output);
+          return o.class === "system"
+              && o.signals_used.includes("keyword")
+              && o.signals_used.includes("file-count");
+
+  # ── 7. System: file-count alone forces escalation ──────────────────────────
+  - description: "7 files >5 forces system regardless of keyword"
+    vars:
+      task: "update the import paths after the package rename"
+      files_in_scope:
+        - "src/a.ts"
+        - "src/b.ts"
+        - "src/c.ts"
+        - "src/d.ts"
+        - "src/e.ts"
+        - "src/f.ts"
+        - "src/g.ts"
+      tool_plan: ["Read", "Edit"]
+      loc_hint: 30
+    assert:
+      - type: javascript
+        value: |
+          const o = JSON.parse(output);
+          return o.class === "system"
+              && o.signals_used.includes("file-count");
+
+  # ── 8. Audit (path signal): write to docs/sdlc/security/** ────────────────
+  - description: "Write target under docs/sdlc/security/** → audit"
+    vars:
+      task: "produce a security audit report at docs/sdlc/security/auth-audit.md covering the auth subsystem"
+      files_in_scope: ["src/auth/login.ts", "src/auth/sessions.ts"]
+      tool_plan: ["Read", "Grep", "Write"]
+      loc_hint: null
+      write_targets: ["docs/sdlc/security/auth-audit.md"]
+    assert:
+      - type: javascript
+        value: |
+          const o = JSON.parse(output);
+          return o.class === "audit"
+              && o.signals_used.includes("path");
+
+  # ── 9. Audit (keyword signal): "audit" in prompt ──────────────────────────
+  - description: "audit keyword → audit class"
+    vars:
+      task: "audit the payment flow for PCI-DSS compliance gaps"
+      files_in_scope:
+        - "src/payments/checkout.ts"
+        - "src/payments/webhook.ts"
+      tool_plan: ["Read", "Grep"]
+      loc_hint: null
+    assert:
+      - type: javascript
+        value: |
+          const o = JSON.parse(output);
+          return o.class === "audit"
+              && o.signals_used.includes("keyword");
+
+  # ── 10. Tie-break: trivial keyword vs file count ──────────────────────────
+  - description: "show keyword (trivial) + 7 files → tie-break to system"
+    vars:
+      task: "show me which files import the deprecated getCwd helper"
+      files_in_scope:
+        - "src/utils/path.ts"
+        - "src/utils/cwd.ts"
+        - "src/lib/spawn.ts"
+        - "src/lib/worktree.ts"
+        - "src/cmd/build.ts"
+        - "src/cmd/serve.ts"
+        - "tests/utils.test.ts"
+      tool_plan: ["Grep", "Read"]
+      loc_hint: null
+    assert:
+      - type: javascript
+        value: |
+          const o = JSON.parse(output);
+          return o.class === "system"
+              && o.tie_break_applied === true
+              && o.signals_used.includes("file-count");

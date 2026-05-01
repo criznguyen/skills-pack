@@ -1,0 +1,10 @@
+{
+  "session_id": "cqr-test-session",
+  "hook_event_name": "PreToolUse",
+  "cwd": "/home/criznguyen/projects/random-repo",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "rm -rf /tmp/build-output",
+    "description": "clean build output"
+  }
+}

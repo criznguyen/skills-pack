@@ -1,0 +1,8 @@
+{
+  "$schema": "./freeze.schema.json",
+  "_comment": "Project-scoped freeze list — paths/globs/commands the agent must NOT touch in this project. Empty by default; populate per project after `install.sh` wires the hook. Per roadmap-v1.1 §2.3 + P2-19 freeze-list promotion trigger.",
+  "version": 1,
+  "paths": [],
+  "globs": [],
+  "commands": []
+}

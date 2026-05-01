@@ -1,0 +1,118 @@
+# core/core-config/templates/tests/idea-rubric/tasks.yaml
+# Promptfoo tasks: idea-rubric reference file produces well-formed VERDICT blocks.
+#
+# Mirrors envelope of core/audit/tests/tasks.yaml (haiku grader pinned via root
+# tests/promptfooconfig.yaml). Run via:
+#   cd core/core-config/templates && npx promptfoo@0.121.9 eval -c tests/idea-rubric/tasks.yaml
+#
+# 3 cases (per SYNTHESIS.md §5):
+#   1. Cargo-culting → expected REJECT or DEFER + cargo-culting flag
+#   2. Sunk-cost migration → expected REJECT + sunk-cost migration / bundle poisoning flag
+#   3. Compliance-driven adoption → expected ADOPT + no anti-pattern flags
+
+description: "idea-rubric reference file — verdict-block regression tests"
+
+tags:
+  - idea-rubric
+  - smoke
+
+prompts:
+  - id: idea-rubric-apply
+    label: "Apply idea-rubric to a candidate idea"
+    raw: |
+      You are a senior SWE following claude-skills core-config v1.1.
+
+      Read the rubric at {{cwd}}/core/core-config/templates/idea-rubric.md
+      and apply it to the IDEA below. Emit ONLY the verdict block from
+      Section 5 of the rubric (paste-able into decisions.md), populated
+      with concrete one-line reasoning per lens. Do not editorialize
+      outside the block.
+
+      IDEA: {{idea}}
+
+providers:
+  - id: anthropic:messages:claude-sonnet-4-6
+    label: "idea-rubric-sonnet"
+    config:
+      temperature: 0
+      max_tokens: 1500
+
+defaultTest:
+  options:
+    transform: "output.toString()"
+  vars:
+    cwd: "{{ env.CLAUDE_PROJECT_DIR }}"
+
+tests:
+  - description: "cargo-culting case — Kafka because Netflix"
+    vars:
+      idea: "Let's adopt Kafka because Netflix uses it for event streaming."
+    assert:
+      - type: regex
+        value: 'VERDICT:\s*(REJECT|DEFER)'
+      - type: regex
+        value: '(?i)cargo[- ]?culting'
+      - type: not-contains
+        value: "VERDICT: ADOPT"
+      - type: llm-rubric
+        provider:
+          id: anthropic:messages:claude-haiku-4-5-20251001
+          config:
+            temperature: 0
+        value: |
+          The output is a verdict block from idea-rubric.md.
+          Verify: (a) all four lens scores present (Necessity, Compatibility, Risk, Reversibility),
+          (b) ANTI-PATTERNS line names cargo-culting, (c) PRE-MORTEM line is a
+          plausible specific failure (not generic "it might break"), (d) VERDICT is REJECT or DEFER,
+          (e) WHAT WOULD CHANGE MY MIND is a falsifiable condition (e.g. measured throughput limit,
+          named scale constraint), not a vague "if we needed it later".
+          PASS only if all five hold.
+
+  - description: "sunk-cost migration case — Postgres → Mongo across 47 services"
+    vars:
+      idea: "Migrate from Postgres to MongoDB across all 47 services. No deletion date for the old Postgres clusters yet."
+    assert:
+      - type: contains
+        value: "VERDICT: REJECT"
+      - type: regex
+        value: '(?i)(sunk[- ]?cost|bundle[- ]?poisoning|no deletion date)'
+      - type: not-contains
+        value: "VERDICT: ADOPT"
+      - type: llm-rubric
+        provider:
+          id: anthropic:messages:claude-haiku-4-5-20251001
+          config:
+            temperature: 0
+        value: |
+          The output is a verdict block.
+          Verify: (a) Reversibility lens scores 1 or 2 (schema-of-record swap, no deletion date),
+          (b) ANTI-PATTERNS names sunk-cost migration AND/OR bundle poisoning,
+          (c) PRE-MORTEM identifies the parallel-maintenance failure mode (running both DBs for years),
+          (d) VERDICT is REJECT,
+          (e) WHAT WOULD CHANGE MY MIND requires a concrete deletion date for the old system.
+          PASS only if all five hold.
+
+  - description: "compliance-driven legitimate adoption — PII detection lib for SOC2"
+    vars:
+      idea: "Adopt PII detection library presidio to meet SOC2-Type2 audit dated 2026-Q3. Single integration point at the API gateway."
+    assert:
+      - type: contains
+        value: "VERDICT: ADOPT"
+      - type: not-contains
+        value: "VERDICT: REJECT"
+      - type: regex
+        value: '(?i)ANTI[- ]?PATTERNS\s*[:\-]\s*(none|n/a|—)'
+      - type: llm-rubric
+        provider:
+          id: anthropic:messages:claude-haiku-4-5-20251001
+          config:
+            temperature: 0
+        value: |
+          The output is a verdict block.
+          Verify: (a) Necessity lens scores 4 or 5 (cites SOC2 / compliance / dated audit),
+          (b) ANTI-PATTERNS line is "none" or equivalent (no false positives),
+          (c) PRE-MORTEM focuses on integration risk (false positives, latency, coverage gaps)
+              — NOT on whether to adopt at all,
+          (d) VERDICT is ADOPT,
+          (e) TASK-CLASS field is populated (feature or system-change is acceptable).
+          PASS only if all five hold.

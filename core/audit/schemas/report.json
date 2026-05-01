@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/criznguyen/claude-skills/core/audit/schemas/report.json",
+  "title": "audit-report",
+  "description": "Machine-readable companion to docs/sdlc/audit/<id>-audit-report.md. Emitted by the audit sub-agent at docs/sdlc/audit/<id>-findings.json. The Markdown report is the human surface; this JSON is the gate input that commit-and-pr (P1-11) and pre-audit-gate.sh consume.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "id",
+    "schema_version",
+    "audited_at",
+    "auditor_model",
+    "diff_range",
+    "dimensions_run",
+    "verdict",
+    "counts",
+    "findings"
+  ],
+  "properties": {
+    "id": {
+      "type": "string",
+      "description": "Feature / system-change ID. Matches the <id> path component used in docs/sdlc/spec/<id>.md, docs/sdlc/audit/<id>-audit-report.md, etc.",
+      "pattern": "^[a-z0-9][a-z0-9-]{1,62}[a-z0-9]$"
+    },
+    "schema_version": {
+      "type": "integer",
+      "description": "Bumped when this schema makes a backwards-incompatible change. v1 of audit ships schema_version: 1.",
+      "const": 1
+    },
+    "audited_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 UTC timestamp at which the report was emitted."
+    },
+    "auditor_model": {
+      "type": "string",
+      "description": "The exact Anthropic model ID that ran the audit. Typically 'claude-opus-4-7'. Sonnet/Haiku are FORBIDDEN per README.md 'Model selection' (Fansipan absolute rule + audit-quality requirement).",
+      "enum": [
+        "claude-opus-4-7",
+        "claude-opus-4-6"
+      ]
+    },
+    "diff_range": {
+      "type": "string",
+      "description": "The exact diff range audited. Default 'main...HEAD'. Recorded so a re-audit can reproduce the input.",
+      "minLength": 1,
+      "maxLength": 256
+    },
+    "dimensions_run": {
+      "type": "array",
+      "description": "Which severity dimensions the auditor ran. Default both.",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": ["security", "pe"]
+      }
+    },
+    "verdict": {
+      "type": "string",
+      "description": "PASS = mergeable. BLOCK = at least one CRITICAL or HIGH finding, OR a MEDIUM that contradicts a spec success criterion, OR an empty-input refusal. ESCALATED = auditor read all inputs but cannot form a confident PASS or BLOCK from available evidence; defer to operator (see docs/sdlc/audit/ESCALATION.md). Charter v1.1 §6 zero-deferral applies; §2.1: forced PASS is forbidden — emit ESCALATED instead. Auditor MUST NOT emit PASS while any CRITICAL or HIGH finding is open.",
+      "enum": ["PASS", "BLOCK", "ESCALATED"]
+    },
+    "counts": {
+      "type": "object",
+      "description": "Severity histogram. The sum of these counts MUST equal len(findings).",
+      "additionalProperties": false,
+      "required": ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"],
+      "properties": {
+        "CRITICAL": { "type": "integer", "minimum": 0 },
+        "HIGH": { "type": "integer", "minimum": 0 },
+        "MEDIUM": { "type": "integer", "minimum": 0 },
+        "LOW": { "type": "integer", "minimum": 0 },
+        "INFO": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "inputs": {
+      "type": "object",
+      "description": "Records of the audit inputs. Optional but recommended for traceability and re-audit reproducibility.",
+      "additionalProperties": false,
+      "properties": {
+        "spec_path": { "type": "string" },
+        "spec_sha": { "type": "string", "pattern": "^[0-9a-f]{7,64}$" },
+        "threat_model_path": { "type": "string" },
+        "threat_model_sha": { "type": "string", "pattern": "^[0-9a-f]{7,64}$" },
+        "decisions_path": { "type": "string" },
+        "decisions_sha": { "type": "string", "pattern": "^[0-9a-f]{7,64}$" },
+        "head_sha": { "type": "string", "pattern": "^[0-9a-f]{7,64}$" },
+        "base_sha": { "type": "string", "pattern": "^[0-9a-f]{7,64}$" }
+      }
+    },
+    "findings": {
+      "type": "array",
+      "description": "All findings in the audit, in the order they were recorded. Each item conforms to schemas/finding.json.",
+      "items": {
+        "$ref": "./finding.json"
+      }
+    },
+    "checklist_summary": {
+      "type": "object",
+      "description": "Optional summary of the per-checklist-item verdicts ([x] / [!] / [-]). The full checklist is in the Markdown report; this is just the totals.",
+      "additionalProperties": false,
+      "properties": {
+        "security": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["passed", "findings", "not_applicable"],
+          "properties": {
+            "passed": { "type": "integer", "minimum": 0 },
+            "findings": { "type": "integer", "minimum": 0 },
+            "not_applicable": { "type": "integer", "minimum": 0 }
+          }
+        },
+        "pe": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["passed", "findings", "not_applicable"],
+          "properties": {
+            "passed": { "type": "integer", "minimum": 0 },
+            "findings": { "type": "integer", "minimum": 0 },
+            "not_applicable": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "wall_clock_seconds": {
+      "type": "number",
+      "description": "Optional. Duration of the audit run end-to-end. Acceptance criterion is <300s for a 500-line diff (skills-roadmap-v1.1.md §2.2).",
+      "minimum": 0,
+      "maximum": 7200
+    },
+    "out_of_scope": {
+      "type": "array",
+      "description": "Optional list of paths or topics deliberately excluded from this audit run, with reasons. Used to make the boundary of the audit explicit (anti-severity-laundering).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "reason"],
+        "properties": {
+          "path": { "type": "string" },
+          "reason": { "type": "string", "minLength": 5, "maxLength": 256 }
+        }
+      }
+    }
+  }
+}

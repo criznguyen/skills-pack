@@ -1,0 +1,62 @@
+diff --git a/src/string-utils.ts b/src/string-utils.ts
+index 1234567..89abcde 100644
+--- a/src/string-utils.ts
++++ b/src/string-utils.ts
+@@ -1,4 +1,16 @@
+ export function trimEnds(input: string): string {
+   return input.trim();
+ }
++
++/** Returns the input with the first character upper-cased. Empty string passes through. */
++export function capitalize(input: string): string {
++  if (input.length === 0) {
++    return input;
++  }
++  return input.charAt(0).toUpperCase() + input.slice(1);
++}
++
++/** Returns true iff input is a non-empty string of only ASCII letters. */
++export function isAsciiAlpha(input: string): boolean {
++  return input.length > 0 && /^[A-Za-z]+$/.test(input);
++}
+diff --git a/tests/string-utils.test.ts b/tests/string-utils.test.ts
+index 4444444..5555555 100644
+--- a/tests/string-utils.test.ts
++++ b/tests/string-utils.test.ts
+@@ -1,7 +1,29 @@
+-import { trimEnds } from '../src/string-utils';
++import { trimEnds, capitalize, isAsciiAlpha } from '../src/string-utils';
+
+ describe('trimEnds', () => {
+   it('trims spaces', () => {
+     expect(trimEnds('  hi  ')).toBe('hi');
+   });
+ });
++
++describe('capitalize', () => {
++  it('capitalizes the first character', () => {
++    expect(capitalize('hello')).toBe('Hello');
++  });
++
++  it('handles empty string', () => {
++    expect(capitalize('')).toBe('');
++  });
++
++  it('leaves an already-capitalized string alone', () => {
++    expect(capitalize('Hello')).toBe('Hello');
++  });
++});
++
++describe('isAsciiAlpha', () => {
++  it('accepts pure-ASCII letters', () => {
++    expect(isAsciiAlpha('Hello')).toBe(true);
++  });
++
++  it('rejects empty string', () => {
++    expect(isAsciiAlpha('')).toBe(false);
++  });
++
++  it('rejects mixed digits', () => {
++    expect(isAsciiAlpha('hello123')).toBe(false);
++  });
++});

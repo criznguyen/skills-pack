@@ -1,0 +1,62 @@
+# CQR-C Lock List — copy to ~/.claude/cqr-locks.txt to override defaults.
+#
+# Format: one rule per line, prefixed by category.
+#   keyword: <regex-fragment>     (matched against UserPromptSubmit prompt; case-insensitive)
+#   path:    <regex-fragment>     (matched against cwd or Edit/Write file_path)
+#   bash:    <regex-fragment>     (matched against Bash tool .tool_input.command; case-insensitive)
+#
+# All entries within a category are joined by `|` into one alternation regex.
+# Lines starting with `#` are comments. Empty lines are ignored.
+# If this file is absent, the hook scripts use the built-in defaults below.
+#
+# To verify your overrides parsed correctly, after editing run:
+#   /home/criznguyen/.claude/hooks/cqr/user-prompt-submit.sh < tests/fixtures/01-keyword-fence.json
+
+# --- keyword fence (UserPromptSubmit triggers) ---
+keyword:audit
+keyword:security
+keyword:production
+keyword:threat model
+keyword:refactor architecture
+keyword:incident
+keyword:compliance
+keyword:migration
+keyword:pci-?dss
+keyword:gdpr
+keyword:soc ?2
+# Suggested additions if you want tighter coverage of concurrency / data-loss zones:
+# keyword:race condition
+# keyword:concurrent
+# keyword:atomic
+# keyword:rate.?limiter
+# keyword:locking
+
+# --- path fence (PreToolUse Edit/Write + cwd in UserPromptSubmit) ---
+path:/projects/fansipan/
+path:/auth/
+path:/security/
+path:/billing/
+path:/migrations/
+path:docs/sdlc/security
+path:docs/sdlc/principle-engineer
+# Suggested additions:
+# path:/payments/
+# path:/secrets/
+# path:/.env
+
+# --- bash destructive fence (PreToolUse Bash) ---
+bash:rm -rf
+bash:git push --force
+bash:git push -f([[:space:]]|$)
+bash:git reset --hard
+bash:chmod -R
+bash:chown -R
+bash:dd if=
+bash:mkfs\.
+bash:drop database
+bash:drop table
+bash:truncate table
+# Suggested additions if you have CI/CD or k8s blast radius:
+# bash:kubectl delete
+# bash:terraform destroy
+# bash:helm uninstall

@@ -1,0 +1,193 @@
+# Promptfoo eval suite for model-router
+#
+# Run:
+#   promptfoo eval -c tests/tasks.yaml
+#
+# Each test feeds a synthetic routing context through the skill and asserts on
+# the structured JSON output. The grader is pinned to Haiku 4.5 — routing
+# decisions are cheap classification, and we want the grader cheap too.
+
+description: "model-router · routing decision regressions"
+
+prompts:
+  - file://../prompts/decide.md
+
+providers:
+  - id: anthropic:messages:claude-haiku-4-5
+    label: skill-under-test
+    config:
+      max_tokens: 512
+      temperature: 0
+
+defaultTest:
+  options:
+    provider:
+      id: anthropic:messages:claude-haiku-4-5
+      label: grader
+      config:
+        temperature: 0
+  assert:
+    - type: is-json
+      value:
+        type: object
+        required: ["model", "class", "confidence", "reason", "escalation_triggers_seen"]
+
+tests:
+  # ── 1. Trivial single-file summarization → Haiku ───────────────────────────
+  - description: "Trivial summarization routes to Haiku"
+    vars:
+      task: |
+        Spawn a sub-agent to read README.md and produce a 5-bullet summary.
+      cwd: "/home/criznguyen/projects/some-tool"
+      files_in_scope: ["README.md"]
+      subagent_type: ""
+      tool_plan: ["Read"]
+      context_utilization_pct: 4
+      env_pin: ""
+    assert:
+      - type: javascript
+        value: |
+          const o = JSON.parse(output);
+          return o.model === "claude-haiku-4-5"
+              && o.class === "trivial"
+              && o.reason === "class-map"
+              && o.escalation_triggers_seen.length === 0;
+
+  # ── 2. Hard-locked zone wins over class lookup (Fansipan path) ─────────────
+  - description: "Fansipan path fence overrides trivial-class downshift"
+    vars:
+      task: "Fix the typo in the welcome banner string."
+      cwd: "/home/criznguyen/projects/fansipan"
+      files_in_scope: ["src/components/WelcomeBanner.tsx"]
+      subagent_type: ""
+      tool_plan: ["Read", "Edit"]
+      context_utilization_pct: 6
+      env_pin: ""
+    assert:
+      - type: javascript
+        value: |
+          const o = JSON.parse(output);
+          return o.model === "claude-opus-4-7"
+              && o.reason === "path-fence-fansipan"
+              && o.confidence >= 0.9;
+
+  # ── 3. Keyword fence wins over class lookup ────────────────────────────────
+  - description: "Audit keyword locks Opus regardless of file count"
+    vars:
+      task: "Audit the payment flow for PCI-DSS compliance gaps."
+      cwd: "/home/criznguyen/projects/some-saas"
+      files_in_scope: ["src/payments/checkout.ts"]
+      subagent_type: ""
+      tool_plan: ["Read", "Grep"]
+      context_utilization_pct: 12
+      env_pin: ""
+    assert:
+      - type: javascript
+        value: |
+          const o = JSON.parse(output);
+          return o.model === "claude-opus-4-7"
+              && (o.reason === "keyword-fence" || o.reason === "role-fence")
+              && o.fence_hit && o.fence_hit.length > 0;
+
+  # ── 4. Sensitive path fence (auth/) overrides single-file small-class ─────
+  - description: "auth/ path fence locks Opus even on tiny diff"
+    vars:
+      task: "Bump the bcrypt rounds from 10 to 12."
+      cwd: "/home/criznguyen/projects/some-saas"
+      files_in_scope: ["src/auth/password.ts"]
+      subagent_type: ""
+      tool_plan: ["Read", "Edit"]
+      context_utilization_pct: 5
+      env_pin: ""
+    assert:
+      - type: javascript
+        value: |
+          const o = JSON.parse(output);
+          return o.model === "claude-opus-4-7"
+              && o.reason === "path-fence-sensitive";
+
+  # ── 5. Auto-escalation: file-count trigger fires ───────────────────────────
+  - description: "More than 5 files escalates to Opus via system class"
+    vars:
+      task: |
+        Implement /api/v2/users with full CRUD across routes, controllers,
+        services, models, validators, tests, and OpenAPI spec.
+      cwd: "/home/criznguyen/projects/some-saas"
+      files_in_scope:
+        - "src/routes/users.ts"
+        - "src/controllers/users.ts"
+        - "src/services/users.ts"
+        - "src/models/User.ts"
+        - "src/validators/userSchema.ts"
+        - "tests/users.test.ts"
+        - "openapi.yaml"
+      subagent_type: ""
+      tool_plan: ["Read", "Edit", "Write", "Bash"]
+      context_utilization_pct: 18
+      env_pin: ""
+    assert:
+      - type: javascript
+        value: |
+          const o = JSON.parse(output);
+          return o.model === "claude-opus-4-7"
+              && o.class === "system"
+              && o.escalation_triggers_seen.includes("file-count");
+
+  # ── 6. Long-context BrowseComp pin (Opus 4.6, not 4.7) ─────────────────────
+  - description: "Browse-heavy long-context system task pins Opus 4.6"
+    vars:
+      task: |
+        Spawn a research sub-agent to browse and synthesize a comparison
+        of OSS workflow-orchestration tools using WebSearch + WebFetch.
+        Estimated context will exceed 80K tokens.
+      cwd: "/home/criznguyen/projects/research-spike"
+      files_in_scope: []
+      subagent_type: "Trend Researcher"
+      tool_plan: ["WebSearch", "WebFetch", "Read", "Write"]
+      context_utilization_pct: 22
+      estimated_context_tokens: 80000
+      env_pin: ""
+    assert:
+      - type: javascript
+        value: |
+          const o = JSON.parse(output);
+          return o.model === "claude-opus-4-6"
+              && o.reason === "browsecomp-pin"
+              && o.escalation_triggers_seen.includes("browsecomp-pin");
+
+  # ── 7. Tripwire 2× failure escalates regardless of class ──────────────────
+  - description: "Two failures in 30min force Opus 4.7"
+    vars:
+      task: "Retry the previous Sonnet sub-agent — empty stub last run."
+      cwd: "/home/criznguyen/projects/some-tool"
+      files_in_scope: ["src/lib/sessions.ts"]
+      subagent_type: ""
+      tool_plan: ["Read", "Edit", "Bash"]
+      context_utilization_pct: 14
+      env_pin: ""
+      tripwire_recent_count: 2
+    assert:
+      - type: javascript
+        value: |
+          const o = JSON.parse(output);
+          return o.model === "claude-opus-4-7"
+              && o.reason === "tripwire-2fail"
+              && o.confidence >= 0.85;
+
+  # ── 8. Session pin (env) takes priority over everything ────────────────────
+  - description: "CLAUDE_PIN_MODEL overrides every other signal"
+    vars:
+      task: "spawn a sub-agent to summarize one file"
+      cwd: "/home/criznguyen/projects/some-tool"
+      files_in_scope: ["README.md"]
+      subagent_type: ""
+      tool_plan: ["Read"]
+      context_utilization_pct: 3
+      env_pin: "claude-opus-4-7"
+    assert:
+      - type: javascript
+        value: |
+          const o = JSON.parse(output);
+          return o.model === "claude-opus-4-7"
+              && o.reason === "session-pin"
+              && o.confidence === 1.0;

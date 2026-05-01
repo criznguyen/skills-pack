@@ -1,0 +1,3 @@
+{"event":"git-push-gate","ts":"2026-04-29T08:30:00Z","tool":"Bash","decision":"refused","branch":"main","reason":"force_push","bypass_reason":"","session_id":"sess-A"}
+{"event":"git-push-gate","ts":"2026-04-29T08:30:05Z","tool":"Bash","decision":"allowed","branch":"feat/personal","reason":"force_push","bypass_reason":"","session_id":"sess-A"}
+{"event":"git-push-gate","ts":"2026-04-29T08:30:12Z","tool":"Bash","decision":"bypass","branch":"main","reason":"force_push","bypass_reason":"marker","session_id":"sess-A"}

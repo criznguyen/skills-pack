@@ -1,0 +1,77 @@
+{
+  "_comment_cqr": "CQR-C hook block — paste-ready. Merge under the top-level `hooks` key of ~/.claude/settings.json. All paths assume hooks are installed at ~/.claude/hooks/cqr/. See INSTALL-HOOKS.md for the merge procedure.",
+
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/cqr/user-prompt-submit.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+
+    "PreToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/cqr/lock-opus.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/cqr/lock-opus.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/cqr/diff-size-tripwire.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/cqr/post-tool-use-failure.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+
+    "SubagentStop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "~/.claude/hooks/cqr/subagent-stop.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

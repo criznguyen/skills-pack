@@ -1,0 +1,3 @@
+{"event":"credential-scan","ts":"2026-04-29T08:30:00Z","tool":"Edit","decision":"refused","matched_pattern":"aws_access_key","file_path":"/repo/src/config.js","session_id":"sess-A"}
+{"event":"credential-scan","ts":"2026-04-29T08:30:05Z","tool":"Write","decision":"pass","matched_pattern":"","file_path":"/repo/README.md","session_id":"sess-A"}
+{"event":"credential-scan","ts":"2026-04-29T08:30:12Z","tool":"Edit","decision":"bypass","matched_pattern":"aws_access_key","file_path":"/repo/tests/fixtures/aws.js","session_id":"sess-A"}

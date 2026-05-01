@@ -1,0 +1,115 @@
+# Synthetic patch: CQR-C hook block addition to ~/.claude/settings.json
+#
+# This is NOT a real `git diff` against your current settings.json — it shows
+# the JSON keys/objects that the fragment ADDS. If your settings.json already
+# has a `hooks` key, you must MERGE the per-event arrays (do not overwrite).
+#
+# Reference: https://code.claude.com/docs/en/hooks
+# Hook taxonomy: disler/claude-code-hooks-mastery 13-event model.
+#
+# How to read this:
+#   +  lines added by the fragment
+#   ~  lines you must merge with whatever you already have
+#   !  potential conflict — read carefully
+
+--- ~/.claude/settings.json (before)
++++ ~/.claude/settings.json (after CQR-C merge)
+
+  {
+    ... your existing top-level keys (model, env, permissions, statusLine, etc.) ...
+
+~   "hooks": {
+~     ... if you already have UserPromptSubmit/PreToolUse/PostToolUse/SubagentStop
+~         arrays, append the fragment's array entries — do NOT overwrite.
+
++     "UserPromptSubmit": [
++       {
++         "matcher": "",
++         "hooks": [
++           { "type": "command",
++             "command": "~/.claude/hooks/cqr/user-prompt-submit.sh",
++             "timeout": 5 }
++         ]
++       }
++     ],
+
++     "PreToolUse": [
++       {
++         "matcher": "Edit|Write|MultiEdit|NotebookEdit",
++         "hooks": [
++           { "type": "command",
++             "command": "~/.claude/hooks/cqr/lock-opus.sh",
++             "timeout": 5 }
++         ]
++       },
++       {
++         "matcher": "Bash",
++         "hooks": [
++           { "type": "command",
++             "command": "~/.claude/hooks/cqr/lock-opus.sh",
++             "timeout": 5 }
++         ]
++       }
++     ],
+
++     "PostToolUse": [
++       {
++         "matcher": "Edit|Write|MultiEdit",
++         "hooks": [
++           { "type": "command",
++             "command": "~/.claude/hooks/cqr/diff-size-tripwire.sh",
++             "timeout": 5 }
++         ]
++       },
++       {
++         "matcher": "Bash|Edit|Write|MultiEdit",
++         "hooks": [
++           { "type": "command",
++             "command": "~/.claude/hooks/cqr/post-tool-use-failure.sh",
++             "timeout": 5 }
++         ]
++       }
++     ],
+
++     "SubagentStop": [
++       {
++         "matcher": "",
++         "hooks": [
++           { "type": "command",
++             "command": "~/.claude/hooks/cqr/subagent-stop.sh",
++             "timeout": 5 }
++         ]
++       }
++     ]
+
+~   }
+  }
+
+# Files added on disk:
++ ~/.claude/hooks/cqr/user-prompt-submit.sh        (UserPromptSubmit)
++ ~/.claude/hooks/cqr/lock-opus.sh                  (PreToolUse: Edit|Write|Bash)
++ ~/.claude/hooks/cqr/post-tool-use-failure.sh      (PostToolUse: failure detection)
++ ~/.claude/hooks/cqr/subagent-stop.sh              (SubagentStop)
++ ~/.claude/hooks/cqr/diff-size-tripwire.sh         (PostToolUse: Edit|Write LOC counter)
++ ~/.claude/cqr-locks.txt                            (optional — keyword/path/bash overrides)
+
+# Runtime state files (created on first hook firing — not version controlled):
++ ~/.claude/state/lock-opus.flag                    (lock-opus → user-prompt-submit handoff)
++ ~/.claude/state/escalate-next-<session_id>.flag   (diff-size & subagent escalation flags)
++ ~/.claude/state/tripwire-<session_id>.txt         (per-session failure log)
++ ~/.claude/state/lock.log                          (audit trail of lock-opus triggers)
++ ~/.claude/state/diff-size.log                     (audit trail of large-diff triggers)
++ ~/.claude/state/subagent-debrief.log              (audit trail of failed sub-agents)
++ ~/.claude/cqr-hooks.log                           (rolling 7-day log; rotated to .YYYYMMDD)
+
+# Conflict scenarios the merger must resolve manually:
+! If your settings.json already has UserPromptSubmit/PreToolUse/PostToolUse/SubagentStop
+  hooks (e.g. from disler/claude-code-hooks-mastery), append the CQR-C entries to the
+  existing arrays — do NOT replace them. Multiple hooks per event run in order.
+
+! If your settings.local.json overrides settings.json hooks, the CQR-C block must go
+  in whichever file Claude Code reads with priority (typically settings.local.json
+  for user-specific tweaks that should not be checked into source control).
+
+! No matcher field name collision — the existing routing wrapper at
+  /home/criznguyen/bin/safe-spawn-claude.sh is independent of these hooks.

@@ -1,0 +1,11 @@
+{
+  "session_id": "cqr-test-session",
+  "hook_event_name": "PreToolUse",
+  "cwd": "/home/criznguyen/projects/some-app",
+  "tool_name": "Edit",
+  "tool_input": {
+    "file_path": "/home/criznguyen/projects/some-app/src/auth/session.ts",
+    "old_string": "const TOKEN_TTL = 3600;",
+    "new_string": "const TOKEN_TTL = 7200;"
+  }
+}

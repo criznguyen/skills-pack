@@ -1,0 +1,225 @@
+# CQR-C Hook Test Plan
+#
+# Each task fires one hook with one fixture and asserts the hook's output
+# (stdout JSON + side-effect state files). Run all of them with `run-tests.sh`
+# (see below). Hooks are invoked from their installed location at
+# ~/.claude/hooks/cqr/, so install before running these tests.
+#
+# Override the hook source directory if you have not yet installed:
+#   HOOKS_DIR=$(realpath ../hooks) bash run-tests.sh
+
+version: 1
+description: |
+  Verifies each of the 5 CQR-C hooks fires correctly on its trigger and
+  produces the documented additionalContext output + state side-effects.
+
+defaults:
+  hooks_dir: ~/.claude/hooks/cqr
+  state_dir: ~/.claude/state
+  log_file:  ~/.claude/cqr-hooks.log
+  session_id: cqr-test-session
+  cleanup_state_before: true   # rm -f tripwire/escalate flags before running
+
+tasks:
+
+  - id: 01-keyword-fence
+    hook: user-prompt-submit.sh
+    fixture: fixtures/01-user-prompt-keyword.json
+    expects:
+      stdout_json_path: hookSpecificOutput.additionalContext
+      stdout_must_contain:
+        - "ROUTING-HINT"
+        - "hard-locked Opus zone"
+        - "keyword 'security'"
+      side_effects:
+        log_must_match: 'ADVISORY:.*hard-locked Opus zone'
+    purpose: |
+      Confirms the keyword fence catches "security audit" / "compliance" / "SOC 2"
+      and emits a HIGH-confidence Opus advisory before any other heuristic runs.
+
+  - id: 02a-lock-opus-bash-rm
+    hook: lock-opus.sh
+    fixture: fixtures/02-lock-opus-bash-rm.json
+    expects:
+      stdout_json_path: hookSpecificOutput.additionalContext
+      stdout_must_contain:
+        - "LOCK-OPUS"
+        - "rm -rf"
+      side_effects:
+        file_must_exist: ~/.claude/state/lock-opus.flag
+        log_must_match:  'LOCK-OPUS triggered:.*destructive command'
+    purpose: |
+      Confirms PreToolUse on Bash detects `rm -rf` and emits the lock advisory.
+
+  - id: 02b-lock-opus-edit-auth
+    hook: lock-opus.sh
+    fixture: fixtures/02b-lock-opus-edit-auth.json
+    expects:
+      stdout_json_path: hookSpecificOutput.additionalContext
+      stdout_must_contain:
+        - "LOCK-OPUS"
+        - "/auth/"
+      side_effects:
+        file_must_exist: ~/.claude/state/lock-opus.flag
+        log_must_match:  'LOCK-OPUS triggered:.*sensitive path'
+    purpose: |
+      Confirms PreToolUse on Edit detects file_path under /auth/ and emits
+      the lock advisory.
+
+  - id: 03-tripwire-escalate-on-second-failure
+    hook: post-tool-use-failure.sh
+    fixture: fixtures/03-tool-failure.json
+    runs: 2     # fire the hook twice with the same fixture
+    expects:
+      run_1:
+        stdout_must_be_empty_or_no_advisory: true
+      run_2:
+        stdout_json_path: hookSpecificOutput.additionalContext
+        stdout_must_contain:
+          - "TRIPWIRE-ESCALATE"
+          - "2 tool failures"
+          - "claude-opus-4-7"
+      side_effects:
+        file_must_exist:    ~/.claude/state/tripwire-cqr-test-session.txt
+        file_min_line_count: { path: ~/.claude/state/tripwire-cqr-test-session.txt, lines: 2 }
+    purpose: |
+      Confirms the tripwire counter increments and emits an escalation advisory
+      only after >= 2 failures (CQR_TRIPWIRE_THRESHOLD default).
+
+  - id: 03b-tripwire-no-false-positive-on-zero-errors
+    hook: post-tool-use-failure.sh
+    fixture: fixtures/03b-tool-success-zero-errors.json
+    runs: 2     # fire twice — neither run should record a failure
+    expects:
+      run_1:
+        stdout_must_be_empty_or_no_advisory: true
+      run_2:
+        stdout_must_be_empty_or_no_advisory: true
+      side_effects:
+        file_must_not_exist: ~/.claude/state/tripwire-cqr-test-session.txt
+    purpose: |
+      Regression guard for AUDIT-004: the failure-keyword fallback must NOT
+      match strings like "0 errors found", "no errors", "error rate: 0%", or
+      "error: 0". Such output is success — counter must stay at 0.
+
+  - id: 03c-tripwire-fires-on-python-traceback
+    hook: post-tool-use-failure.sh
+    fixture: fixtures/03c-tool-failure-traceback.json
+    runs: 2
+    expects:
+      run_1:
+        stdout_must_be_empty_or_no_advisory: true
+      run_2:
+        stdout_json_path: hookSpecificOutput.additionalContext
+        stdout_must_contain:
+          - "TRIPWIRE-ESCALATE"
+          - "claude-opus-4-7"
+      side_effects:
+        file_must_exist: ~/.claude/state/tripwire-cqr-test-session.txt
+    purpose: |
+      Regression guard for AUDIT-004: the tightened fallback must still detect
+      a real Python "Traceback (most recent call last):" stack and trip the
+      tripwire on the second occurrence.
+
+  - id: 04-subagent-refusal-escalate
+    hook: subagent-stop.sh
+    fixture: fixtures/04-subagent-stop-refusal.json
+    setup:
+      # The fixture references /tmp/cqr-test-transcript/refusal.txt; ensure it exists
+      ensure_file:
+        path: /tmp/cqr-test-transcript/refusal.txt
+        content_min_size_bytes: 50
+    expects:
+      stdout_json_path: hookSpecificOutput.additionalContext
+      stdout_must_contain:
+        - "SUBAGENT-ESCALATE"
+        - "stopped abnormally"
+        - "claude-opus-4-7"
+      side_effects:
+        file_must_exist: ~/.claude/state/escalate-next-cqr-test-session.flag
+        log_must_match:  'SUBAGENT-ESCALATE'
+    purpose: |
+      Confirms transcript-tail scan catches refusal phrases ("I cannot",
+      "I apologize, but", "hit context limit") and emits the parent advisory
+      plus sets the carry-over flag for the next user-prompt-submit fire.
+
+  - id: 04b-subagent-refusal-curly-apostrophe
+    hook: subagent-stop.sh
+    fixture: fixtures/04b-subagent-stop-refusal-curly.json
+    setup:
+      # Copy the canned transcript (which contains U+2019 curly apostrophe)
+      # into the path the fixture references.
+      copy_file:
+        from: fixtures/transcripts/refusal-curly-apostrophe.txt
+        to:   /tmp/cqr-test-transcript/refusal-curly.txt
+    expects:
+      stdout_json_path: hookSpecificOutput.additionalContext
+      stdout_must_contain:
+        - "SUBAGENT-ESCALATE"
+        - "claude-opus-4-7"
+      side_effects:
+        file_must_exist: ~/.claude/state/escalate-next-cqr-test-session.flag
+        log_must_match:  'SUBAGENT-ESCALATE'
+    purpose: |
+      Regression guard for AUDIT-005: the refusal regex must fire even when
+      the transcript uses Unicode curly apostrophe `’` (U+2019) — the form
+      Anthropic models actually emit in conversational refusals like
+      "I’m unable to proceed".
+
+  - id: 05-diff-size-large-write
+    hook: diff-size-tripwire.sh
+    fixture: fixtures/05-diff-size-large-write.json
+    expects:
+      stdout_json_path: hookSpecificOutput.additionalContext
+      stdout_must_contain:
+        - "DIFF-SIZE-TRIPWIRE"
+        - "lines changed"
+        - "claude-opus-4-7"
+      side_effects:
+        file_must_exist: ~/.claude/state/escalate-next-cqr-test-session.flag
+        log_must_match:  'DIFF-SIZE-TRIPWIRE total='
+    purpose: |
+      Confirms a 200-line Write triggers the diff-size threshold (>150) and
+      sets the per-session escalate flag so the next user-prompt-submit fire
+      surfaces a carry-over routing hint.
+
+  - id: 06-user-prompt-trivial-haiku
+    hook: user-prompt-submit.sh
+    fixture: fixtures/06-user-prompt-trivial.json
+    expects:
+      stdout_json_path: hookSpecificOutput.additionalContext
+      stdout_must_contain:
+        - "ROUTING-HINT"
+        - "trivial"
+        - "claude-haiku-4-5"
+    purpose: |
+      Confirms the trivial-keyword heuristic ("summarize ...") emits a Haiku
+      advisory when no fence triggers fire.
+
+# How to run by hand (without a runner):
+#
+#   set -euo pipefail
+#   FIX=tests/fixtures
+#   HK=~/.claude/hooks/cqr
+#
+#   # 01 keyword
+#   "$HK/user-prompt-submit.sh" < "$FIX/01-user-prompt-keyword.json" | jq .
+#
+#   # 02a destructive bash
+#   "$HK/lock-opus.sh"          < "$FIX/02-lock-opus-bash-rm.json"   | jq .
+#
+#   # 02b sensitive path
+#   "$HK/lock-opus.sh"          < "$FIX/02b-lock-opus-edit-auth.json" | jq .
+#
+#   # 03 tripwire (run twice)
+#   "$HK/post-tool-use-failure.sh" < "$FIX/03-tool-failure.json"
+#   "$HK/post-tool-use-failure.sh" < "$FIX/03-tool-failure.json" | jq .
+#
+#   # 04 subagent refusal
+#   "$HK/subagent-stop.sh"      < "$FIX/04-subagent-stop-refusal.json" | jq .
+#
+#   # 05 diff size
+#   "$HK/diff-size-tripwire.sh" < "$FIX/05-diff-size-large-write.json" | jq .
+#
+#   # 06 trivial
+#   "$HK/user-prompt-submit.sh" < "$FIX/06-user-prompt-trivial.json"  | jq .

@@ -1,0 +1,24 @@
+# DELIBERATELY CONTAMINATED fixture for eval-contamination-probe self-test.
+# The eval input contains the literal probe-ID-suffixed reference solution,
+# which means an upstream content leak put the answer in the prompt. The
+# probe assertion `not-contains "{{probe_id}}_REFERENCE_SOLUTION:"` MUST fail
+# on this fixture.
+
+description: "synthetic contaminated fixture (self-test only — must FAIL the probe)"
+
+prompts:
+  - id: contaminated
+    raw: |
+      Solve: 2 + 2 = ?
+      Hint: PROBE-deadbeef-self-0_REFERENCE_SOLUTION: 4
+
+providers:
+  - id: anthropic:messages:claude-opus-4-7
+
+tests:
+  - description: "contaminated-0"
+    vars:
+      probe_id: "PROBE-deadbeef-self-0"
+    assert:
+      - type: not-contains
+        value: "{{probe_id}}_REFERENCE_SOLUTION:"

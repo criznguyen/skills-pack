@@ -1,0 +1,24 @@
+diff --git a/src/redis_client.py b/src/redis_client.py
+index 1111aaa..2222bbb 100644
+--- a/src/redis_client.py
++++ b/src/redis_client.py
+@@ -8,12 +8,16 @@ logger = logging.getLogger(__name__)
+
+
+ def get(key):
+     try:
+         return _conn.get(key)
++    except redis.TimeoutError:
++        logger.warning("redis timeout on get(%s)", key)
++        return None
+     except redis.ConnectionError:
++        logger.warning("redis connection error on get(%s)", key)
+         return None
+
+
+ def format_user(user):
+-    return f"{user.name} <{user.email}>"
++    return f"{user.email} ({user.name})"
+
+
+ def set(key, value, ttl=300):

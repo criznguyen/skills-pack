@@ -208,13 +208,21 @@ cd <project-root>
 mkdir -p .claude
 
 # add patterns to allowlist (same glob format as prod-paths.txt)
+# v1.4.4: patterns must start with **/ — they match ABSOLUTE paths.
 cat > .claude/governance-allow.txt <<'EOF'
 # audit-remediation 2026-05-03 — closing 14 FAIL findings
 # REMOVE THIS FILE AFTER REMEDIATION COMMIT LANDS
-internal/auth/**
-db/migrations/**
+**/internal/auth/**
+**/db/migrations/**
 EOF
 ```
+
+### Pattern format gotcha (v1.4.4)
+
+Patterns are matched against ABSOLUTE paths. Bare `internal/auth/**` does NOT
+match `/home/.../internal/auth/foo.go` — it must be `**/internal/auth/**`.
+v1.4.4 hooks emit a HINT line on the deny stderr if an allow-file is present
+but no pattern matched; that's almost always the missing `**/` prefix.
 
 ### Verify the hook allows + audit-logs
 
@@ -247,7 +255,7 @@ and within the agreed allowlist scope.
   "ts": "2026-05-03T13:09:25Z",
   "tool": "Edit",
   "file_path": "/home/criznguyen/projects/ciscrm/internal/auth/middleware.go",
-  "matched_pattern": "internal/auth/**",
+  "matched_pattern": "**/internal/auth/**",
   "allow_file": "/home/criznguyen/projects/ciscrm/.claude/governance-allow.txt",
   "reason": "governance-allow match"
 }

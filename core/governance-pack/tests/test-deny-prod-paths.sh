@@ -5,11 +5,13 @@
 # `.claude/governance-allow.txt` may list glob patterns that win over the
 # universal denylist (audit-mode workflows).
 #
-# 4 cases per v1.4.3 spec:
+# 4 cases per v1.4.3 spec + 1 v1.4.4 hardening case:
 #   A1 deny-only match     — no allow-file; denylist hit → exit 2
 #   A2 allow-only match    — allow-file matches; denylist would NOT match anyway → exit 0 + JSONL
 #   A3 both match (allow-wins) — allow-file AND denylist match → exit 0 + JSONL
 #   A4 neither match       — exit 0 + no JSONL
+#   A5 broken-jq fallback  — broken `jq` shim in PATH; hook must fall through to
+#                            python3/grep and STILL block the path (no silent bypass)
 #
 # Each case runs in an isolated mktemp -d project with .git/ and per-test
 # allow/deny files. trap cleanup ensures no real state is touched.
@@ -217,10 +219,51 @@ test_a4_neither() {
   rm -rf "$(dirname "$proj")"
 }
 
+# ---------- A5 — broken-jq fallback (v1.4.4) ----------
+# Install a jq shim that satisfies `command -v jq` but ALWAYS fails on
+# invocation. The hook must detect this via `jq --version` probe and fall
+# through to python3 (or grep) so denylist still blocks the path.
+test_a5_broken_jq_fallback() {
+  local proj deny target shimdir
+  proj="$(mkproject)"
+  deny="$proj/.claude/prod-paths.txt"
+  write_deny "$deny"
+  target="$proj/internal/auth/middleware.go"
+  touch "$target"
+
+  shimdir="$(mktemp -d)"
+  cat > "$shimdir/jq" <<'SHIM'
+#!/bin/sh
+exit 1
+SHIM
+  chmod +x "$shimdir/jq"
+
+  local stderr_file
+  stderr_file="$(mktemp)"
+  # Prepend shim PATH so the broken jq is found first; keep system PATH so
+  # python3 / grep are reachable for the fallback.
+  PATH="$shimdir:$PATH" \
+    GOVERNANCE_PACK_PROD_PATHS_FILE="$deny" \
+    bash "$HOOK" <<< "$(mkjson "$target")" 2>"$stderr_file"
+  local rc=$?
+  local stderr
+  stderr="$(cat "$stderr_file")"
+  rm -f "$stderr_file"
+  rm -rf "$shimdir"
+
+  if [ "$rc" -eq 2 ] && printf '%s' "$stderr" | grep -q 'BLOCKED'; then
+    record "A5 broken-jq fallback" 1 ""
+  else
+    record "A5 broken-jq fallback" 0 "rc=$rc stderr='$stderr' (expected exit=2 + BLOCKED — silent bypass would have given exit=0)"
+  fi
+  rm -rf "$(dirname "$proj")"
+}
+
 test_a1_deny_only
 test_a2_allow_only
 test_a3_allow_wins
 test_a4_neither
+test_a5_broken_jq_fallback
 
 echo "---"
 for r in "${RESULTS[@]}"; do echo "$r"; done

@@ -416,8 +416,8 @@ Identical to `~/.claude/prod-paths.txt`:
 
 ```
 # audit-remediation 2026-05-03 — required for closing 14 FAIL findings
-internal/auth/**
-db/migrations/**
+**/internal/auth/**
+**/db/migrations/**
 **/billing/**
 
 # blank lines and # comments allowed
@@ -427,13 +427,40 @@ The patterns are matched against the absolute path AND the original
 (possibly relative) `file_path` extracted from the tool input — same matching
 logic as the denylist, so semantics carry over.
 
+### Pattern format — RIGHT vs WRONG (v1.4.4)
+
+Patterns match against ABSOLUTE paths (e.g.
+`/home/operator/projects/myproject/internal/auth/middleware.go`), so:
+
+**RIGHT** — always prefix with `**/`:
+
+```
+**/internal/auth/**
+**/db/migrations/**
+**/sqlc.yaml
+**/go.mod
+```
+
+**WRONG** — silently won't match (denylist still fires; v1.4.4 hooks emit a
+HINT line on the deny stderr when an allow-file is present but no pattern
+matched):
+
+```
+internal/auth/**       # no leading **/
+db/migrations/**       # same problem
+sqlc.yaml              # bare filenames need **/ too
+```
+
+For absolute pinning to a specific project, use the full path
+(`/home/operator/projects/myproject/internal/auth/**`).
+
 ### Audit log location
 
 `<project_root>/.claude/state/governance-allow.jsonl` (one JSON object per
 line). Each entry:
 
 ```json
-{"ts":"2026-05-03T13:09:25Z","tool":"Edit","file_path":"/abs/path/file.go","matched_pattern":"**/auth/**","allow_file":"/abs/path/.claude/governance-allow.txt","reason":"governance-allow match"}
+{"ts":"2026-05-03T13:09:25Z","tool":"Edit","file_path":"/abs/path/internal/auth/file.go","matched_pattern":"**/internal/auth/**","allow_file":"/abs/path/.claude/governance-allow.txt","reason":"governance-allow match"}
 ```
 
 Inspect with `jq`:

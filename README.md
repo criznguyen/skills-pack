@@ -1,6 +1,6 @@
 # skills-pack
 
-Version: see [`VERSION`](VERSION) · matches the upstream `claude-skills` release tag (current: `v1.4.3`).
+Version: see [`VERSION`](VERSION) · matches the upstream `claude-skills` release tag (current: `v1.5.0`).
 
 A drop-in pack of [Claude Code](https://claude.com/claude-code) skills, hooks, and slash commands that turn the agent into a disciplined senior engineer — **type-checked tool surface, sandboxed by default, audit-gated, force-push-blocked, credential-refusing, loop-circuit-broken, postcondition-verified**.
 
@@ -39,6 +39,12 @@ Designed for solo operators and small teams who want guardrails without building
 | **`audit`** | Say *"audit this branch"* / *"security review"* — triggers automatically. Output lands in `docs/sdlc/audit/<id>-{findings.json,audit-report.md}`. AI-provenance footer, fixed glossary, verdict enum `{PASS, BLOCK, ESCALATED}`. |
 | **`delta-code-review`** | Say *"review this diff"* — picks up `git diff --cached`. Output: `docs/sdlc/delta-code-review/<REVIEW-NNN>.md` (lazy emission — skipped on clean PRs). Embeds Karpathy's match-style + every-line-traces + dead-code-call-out rules. |
 | **`worktree-spawn`** | `/worktree spawn <feature-name>` — creates an isolated git worktree for parallel work. Capped at 3 active worktrees. |
+
+### UX conventions (auto-attaching docs skills)
+
+| Skill | When it triggers |
+|---|---|
+| **`anti-ai-ux`** *(v1.5.0+)* | Auto-attaches when generating UI for an AI-driven product (project imports `react`/`vue`/`svelte`/`flutter`/SwiftUI **AND** the prompt mentions chatbot / agent / Claude / copilot / etc.). Codifies five patterns — real-time progress, visible rollback, explain reasoning, consent before destructive, show data flow — with React, Vue 3, Svelte 5, Flutter, and SwiftUI examples per principle. Read-only skill, no hooks. |
 
 ### Opinions (review before adopting)
 
@@ -113,6 +119,7 @@ mkdir -p ~/.claude/skills
 ln -s "$(pwd)/core/audit"             ~/.claude/skills/audit
 ln -s "$(pwd)/core/delta-code-review" ~/.claude/skills/delta-code-review
 ln -s "$(pwd)/core/worktree-spawn"    ~/.claude/skills/worktree-spawn
+ln -s "$(pwd)/core/anti-ai-ux"        ~/.claude/skills/anti-ai-ux
 ```
 
 ### Opinions (optional)
@@ -157,7 +164,7 @@ git pull
 
 ```bash
 ./core/governance-pack/uninstall.sh
-rm -rf ~/.claude/skills/{audit,delta-code-review,worktree-spawn}
+rm -rf ~/.claude/skills/{audit,delta-code-review,worktree-spawn,anti-ai-ux}
 # core-config CLAUDE.md merge: restore from the timestamped backup
 ls ~/.claude/CLAUDE.md.bak.*
 ```
@@ -176,7 +183,9 @@ Full charter: [`docs/synthesis/v1.1/charter-v1.1.md`](docs/synthesis/v1.1/charte
 
 Full history in [`CHANGELOG.md`](CHANGELOG.md).
 
-- **`v1.4.3`** (2026-05-03) — `governance-pack` per-project allowlist. Drop `<project_root>/.claude/governance-allow.txt` (same glob format as `prod-paths.txt`) and listed paths win over the universal denylist FOR THAT PROJECT ONLY, with a JSONL audit trail at `.claude/state/governance-allow.jsonl`. Use it for surge work in protected paths (audit-remediation on `internal/auth/`, schema-redo across `db/migrations/`, billing refactor); remove the file when done. Projects without the file see zero behavior change. Example: `printf 'internal/auth/**\ndb/migrations/**\n' > .claude/governance-allow.txt`. See [`core/governance-pack/README.md`](core/governance-pack/README.md) §"Per-project allowlist (v1.4.3+)".
+- **`v1.5.0`** (2026-05-04) — new `core/anti-ai-ux/` skill: five UX patterns (real-time progress, visible rollback, explain reasoning, consent before destructive, show data flow) the agent applies by default when generating user-facing UI for agent-driven products. Auto-attaches when both a UI-framework signal (React/Vue 3/Svelte 5/Flutter/SwiftUI) AND an AI-product signal are present. Pure additive: new directory, no hook changes, no `settings.json` edits.
+- **`v1.4.4`** (2026-05-03) — hotfix triple. `deny-prod-paths.sh` jq probe now runs `jq --version` so a broken jq symlink in PATH no longer silently bypasses the denylist (+1 test). `block-destructive.sh` adds a doc-context whitelist so `git commit -m "block rm -rf /"` and `echo`/`cat`/heredoc bodies no longer trip on their own description text — chained commands (`&&`/`;`/`|`/`||`) still scan (+5 tests). Allowlist docs gain "Pattern format" RIGHT vs WRONG examples — patterns must prefix `**/` because they match against absolute paths.
+- **`v1.4.3`** (2026-05-03) — `governance-pack` per-project allowlist. Drop `<project_root>/.claude/governance-allow.txt` (same glob format as `prod-paths.txt`) and listed paths win over the universal denylist FOR THAT PROJECT ONLY, with a JSONL audit trail at `.claude/state/governance-allow.jsonl`. Use it for surge work in protected paths (audit-remediation on `internal/auth/`, schema-redo across `db/migrations/`, billing refactor); remove the file when done. Projects without the file see zero behavior change. Example: `printf '**/internal/auth/**\n**/db/migrations/**\n' > .claude/governance-allow.txt` (note: patterns must start with `**/` per v1.4.4 docs). See [`core/governance-pack/README.md`](core/governance-pack/README.md) §"Per-project allowlist (v1.4.3+)".
 - **`v1.4.2.1`** (2026-05-03) — `pre-edit-stash` hotfix: no longer reverts the worktree on sequential edits. The previous primitive moved the targeted file's uncommitted changes off the worktree before each Edit/Write, silently reverting multi-step refactors between tool calls. Replaced with `git stash create` + `git stash store`, which snapshots the worktree without touching it. The `git stash list` recovery contract is preserved.
 - **`v1.4.2`** (2026-05-03) — `core/core-config/` ships the 3 hooks the README and `governance-pack` template have been referencing: `block-destructive.sh` (catastrophic-shell blacklist), `pre-edit-stash.sh` (insurance stash before every Edit/Write), `lint-touched.sh` (per-project `ruff` / `eslint` / `rustfmt` / `shellcheck` / `jq` on touched files, shadow-mode default).
 

@@ -17,6 +17,12 @@
 #   - If matched (and NOT allowed), exits 2 with stderr message → Claude sees the block.
 #   - On infra failure (missing patterns file, jq missing, malformed JSON), exits 0
 #     so that the hook NEVER blocks legitimate work due to its own bugs.
+#   - v1.4.4: jq presence is probed by `jq --version`, not `command -v jq`,
+#     because a broken jq symlink in PATH otherwise satisfies `command -v` but
+#     fails silently when invoked → empty file_path → silent denylist bypass.
+#     Same pattern applied to python3 fallback. v1.4.4 also extends the deny
+#     stderr with a `**/` allowlist-pattern hint when an allow-file is present
+#     but did not match (common operator landmine).
 #
 # Composes with: core-config/pre-edit-stash.sh (runs before this in the same matcher;
 # stash already taken when we deny — harmless).
@@ -29,12 +35,23 @@ PATTERNS_FILE="${GOVERNANCE_PACK_PROD_PATHS_FILE:-$HOME/.claude/prod-paths.txt}"
 INPUT="$(cat || true)"
 [ -z "$INPUT" ] && exit 0
 
+# v1.4.4: a broken `jq` symlink is "found" by `command -v jq` but `jq -r ...`
+# fails with no output → silent denylist bypass. Probe by actually running
+# `jq --version`; if that fails, fall through to python3/grep.
+have_jq() {
+  command -v jq >/dev/null 2>&1 && jq --version >/dev/null 2>&1
+}
+
+have_python3() {
+  command -v python3 >/dev/null 2>&1 && python3 -c '' >/dev/null 2>&1
+}
+
 # Extract file_path. Try jq first, fall back to python3 (one or the other is
 # always present on Linux/macOS dev boxes). Fall back to grep if both missing.
 extract_path() {
-  if command -v jq >/dev/null 2>&1; then
+  if have_jq; then
     echo "$INPUT" | jq -r '.tool_input.file_path // .tool_input.path // empty' 2>/dev/null
-  elif command -v python3 >/dev/null 2>&1; then
+  elif have_python3; then
     echo "$INPUT" | python3 -c 'import json,sys
 try:
   d=json.load(sys.stdin).get("tool_input",{})
@@ -49,9 +66,9 @@ except Exception:
 }
 
 extract_tool_name() {
-  if command -v jq >/dev/null 2>&1; then
+  if have_jq; then
     echo "$INPUT" | jq -r '.tool_name // empty' 2>/dev/null
-  elif command -v python3 >/dev/null 2>&1; then
+  elif have_python3; then
     echo "$INPUT" | python3 -c 'import json,sys
 try:
   print(json.load(sys.stdin).get("tool_name") or "")
@@ -100,11 +117,16 @@ find_project_root() {
 
 PROJECT_ROOT="$(find_project_root "$ABS_PATH" 2>/dev/null || true)"
 
+ALLOW_FILE_PRESENT_BUT_NO_MATCH=0
+ALLOW_FILE_USED=""
+
 if [ -n "$PROJECT_ROOT" ]; then
   ALLOW_FILE="${GOVERNANCE_PACK_ALLOW_FILE:-$PROJECT_ROOT/.claude/governance-allow.txt}"
   AUDIT_LOG="${GOVERNANCE_PACK_AUDIT_LOG_FILE:-$PROJECT_ROOT/.claude/state/governance-allow.jsonl}"
 
   if [ -f "$ALLOW_FILE" ]; then
+    ALLOW_FILE_PRESENT_BUT_NO_MATCH=1
+    ALLOW_FILE_USED="$ALLOW_FILE"
     while IFS= read -r allow_pattern || [ -n "$allow_pattern" ]; do
       allow_pattern="${allow_pattern%$'\r'}"
       [ -z "$allow_pattern" ] && continue
@@ -157,6 +179,15 @@ while IFS= read -r pattern || [ -n "$pattern" ]; do
 [governance-pack/deny-prod-paths] For per-project audit-mode allowlist: add the path glob to
 [governance-pack/deny-prod-paths]   <project_root>/.claude/governance-allow.txt (v1.4.3+).
 EOF
+    if [ "$ALLOW_FILE_PRESENT_BUT_NO_MATCH" -eq 1 ]; then
+      cat >&2 <<EOF
+[governance-pack/deny-prod-paths] HINT (v1.4.4): an allowlist exists at
+[governance-pack/deny-prod-paths]   ${ALLOW_FILE_USED}
+[governance-pack/deny-prod-paths] but no pattern matched. Patterns are matched against ABSOLUTE paths,
+[governance-pack/deny-prod-paths] so prefix patterns with **/ — e.g. \`**/internal/auth/**\` not
+[governance-pack/deny-prod-paths] \`internal/auth/**\`. See core/governance-pack/README.md "Pattern format".
+EOF
+    fi
     exit 2
   fi
 done < "$PATTERNS_FILE"

@@ -14,6 +14,16 @@ set -euo pipefail
 #
 # Opt-out: BLOCK_DESTRUCTIVE_DISABLE={1,true,TRUE} → exit 0 silent regardless.
 #
+# Doc-context whitelist (v1.4.4): destructive patterns appearing inside the
+# TEXT PAYLOAD of a documentation/commit-message op (e.g. `git commit -m
+# "fix: rm -rf / pattern"`, `echo "rm -rf / is dangerous"`, `cat > file <<EOF
+# ... rm -rf / ... EOF`) are NOT actual destructive ops — the operator is
+# describing the rule, not invoking it. Discovered v1.4.2.1 ship: orchestrator
+# had to reword its own CHANGELOG description. The whitelist covers commands
+# whose ENTIRE shape is doc-emission. Chained commands (`&&`, `;`, `|`, `||`)
+# bypass the whitelist so `git commit && rm -rf /` still blocks on the second
+# token. See test cases D15-D19 for the contract.
+#
 # Latency budget <50ms p99: pure regex match; no subshell beyond grep, no
 # fork to external services. Negative-lookahead patterns (terraform destroy
 # without -target; system-halt without --help) implemented via two-step
@@ -51,6 +61,28 @@ block() {
 }
 
 match() { printf '%s' "${cmd}" | grep -qE -- "$1"; }
+
+# ---- v1.4.4 doc-context whitelist ----
+# If the command is SOLELY a doc/commit-msg op (no shell chaining), destructive
+# patterns inside the text payload are descriptions, not invocations. Skip the
+# destructive scan. Chained commands keep the scan active so the destructive
+# half of `git commit && rm -rf /` is still caught.
+if ! [[ "${cmd}" =~ [\;\&\|] ]]; then
+  case "${cmd}" in
+    "git commit "*|"git tag "*|"printf "*|"echo "*|"cat > "*|"cat >> "*)
+      exit 0
+      ;;
+  esac
+fi
+# Heredoc body of any command that writes a file is doc — even chained, the
+# heredoc body is purely text data, not executable. Match the canonical EOF
+# heredoc marker form (`<<EOF`, `<<-EOF`, `<<'EOF'`, `<<"EOF"`). Match the
+# delimiter ANYWHERE in the command string; we don't insist on what follows
+# because heredoc bodies are wrapped in newlines or escaped newlines that
+# vary by JSON encoding.
+if printf '%s' "${cmd}" | grep -qE '<<-?[[:space:]]*['\''"]?EOF'; then
+  exit 0
+fi
 
 # Flag-cluster prefix used by the rm rules below. Matches a chain of one or
 # more `-x` / `--xx` flag tokens where at least one flag carries a destructive

@@ -1,6 +1,6 @@
 # skills-pack
 
-Version: see [`VERSION`](VERSION) · matches the upstream `claude-skills` release tag (e.g. `v1.4.2`).
+Version: see [`VERSION`](VERSION) · matches the upstream `claude-skills` release tag (current: `v1.4.3`).
 
 A drop-in pack of [Claude Code](https://claude.com/claude-code) skills, hooks, and slash commands that turn the agent into a disciplined senior engineer — **type-checked tool surface, sandboxed by default, audit-gated, force-push-blocked, credential-refusing, loop-circuit-broken, postcondition-verified**.
 
@@ -169,6 +169,16 @@ ls ~/.claude/CLAUDE.md.bak.*
 The pack defends against five recurring failure modes — sidetrack, scope creep, fantasy approval, context loss, skipped review — without building yet another framework. Everything is a primitive: `SKILL.md`, hook script, settings bundle, CLAUDE.md fragment.
 
 Full charter: [`docs/synthesis/v1.1/charter-v1.1.md`](docs/synthesis/v1.1/charter-v1.1.md).
+
+---
+
+## Recent versions
+
+Full history in [`CHANGELOG.md`](CHANGELOG.md).
+
+- **`v1.4.3`** (2026-05-03) — `governance-pack` per-project allowlist. Drop `<project_root>/.claude/governance-allow.txt` (same glob format as `prod-paths.txt`) and listed paths win over the universal denylist FOR THAT PROJECT ONLY, with a JSONL audit trail at `.claude/state/governance-allow.jsonl`. Use it for surge work in protected paths (audit-remediation on `internal/auth/`, schema-redo across `db/migrations/`, billing refactor); remove the file when done. Projects without the file see zero behavior change. Example: `printf 'internal/auth/**\ndb/migrations/**\n' > .claude/governance-allow.txt`. See [`core/governance-pack/README.md`](core/governance-pack/README.md) §"Per-project allowlist (v1.4.3+)".
+- **`v1.4.2.1`** (2026-05-03) — `pre-edit-stash` hotfix: no longer reverts the worktree on sequential edits. The previous primitive moved the targeted file's uncommitted changes off the worktree before each Edit/Write, silently reverting multi-step refactors between tool calls. Replaced with `git stash create` + `git stash store`, which snapshots the worktree without touching it. The `git stash list` recovery contract is preserved.
+- **`v1.4.2`** (2026-05-03) — `core/core-config/` ships the 3 hooks the README and `governance-pack` template have been referencing: `block-destructive.sh` (catastrophic-shell blacklist), `pre-edit-stash.sh` (insurance stash before every Edit/Write), `lint-touched.sh` (per-project `ruff` / `eslint` / `rustfmt` / `shellcheck` / `jq` on touched files, shadow-mode default).
 
 ---
 

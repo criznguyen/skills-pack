@@ -1,6 +1,6 @@
 # skills-pack
 
-Version: see [`VERSION`](VERSION) · matches the upstream `claude-skills` release tag (e.g. `v1.4.1`).
+Version: see [`VERSION`](VERSION) · matches the upstream `claude-skills` release tag (e.g. `v1.4.2`).
 
 A drop-in pack of [Claude Code](https://claude.com/claude-code) skills, hooks, and slash commands that turn the agent into a disciplined senior engineer — **type-checked tool surface, sandboxed by default, audit-gated, force-push-blocked, credential-refusing, loop-circuit-broken, postcondition-verified**.
 
@@ -14,7 +14,7 @@ Designed for solo operators and small teams who want guardrails without building
 
 | Skill | What it does |
 |---|---|
-| **`core-config`** | Loads task-class rubric (trivial / small / feature / system-change) + idea-evaluation pointer into every session. 3 hooks: anti-fantasy, blast-radius, pre-audit-gate. |
+| **`core-config`** | Loads task-class rubric (trivial / small / feature / system-change) + idea-evaluation pointer into every session. 6 hooks: anti-fantasy, blast-radius, pre-audit-gate, block-destructive (Bash blacklist: `rm -rf /`, `mkfs`, `dd` to raw disk, fork bomb…), pre-edit-stash (insurance `git stash` before every Edit/Write/MultiEdit so you can recover), and lint-touched (per-project `ruff` / `eslint` / `rustfmt` / `shellcheck` / `jq` on touched files; shadow-mode default, opt-in blocking via `LINT_TOUCHED_BLOCKING=1`; project-scoped via `--project`). |
 | **`governance-pack`** | Bundles all guard hooks below. Blocks writes to denylisted prod paths, strips `Co-Authored-By:` trailers from commit messages, gates audits, warns on un-cleared `[DEBUG-<hex>]` tags pre-commit, emits JSONL telemetry. |
 | **`postcondition-hook`** | After `Bash`/`Edit`/`Write`/`MultiEdit`/`NotebookEdit`, walks `~/.claude/postconditions.d/*.sh` and asserts the world matches the agent's claim. Shadow-mode by default; promote to blocking after measuring false-positive rate. |
 | **`quarantine-pack`** | After `mcp__.*`/`WebFetch`/`Read`, prepends `[QUARANTINE-NOTICE: ...]` so untrusted external content is treated as data, not directives. Trusted-MCP allowlist at `~/.claude/quarantine.d/trusted-mcp-allowlist.txt`. |
@@ -60,8 +60,11 @@ Designed for solo operators and small teams who want guardrails without building
 git clone https://github.com/criznguyen/skills-pack.git ~/src/skills-pack
 cd ~/src/skills-pack
 
-# 1. CLAUDE.md task-class rubric + 3 base hooks
+# 1. CLAUDE.md task-class rubric + 5 user-scope hooks (lint-touched is opt-in project-scope, see --project below)
 ./core/core-config/install.sh
+
+# (optional) Also install lint-touched.sh into <repo>/.claude/hooks/ — runs ruff/eslint/rustfmt/shellcheck/jq on touched files (shadow-mode by default).
+# ./core/core-config/install.sh --project /path/to/repo
 
 # 2. All hook bundles (postconditions + quarantine + 8 v2.0-wave hooks)
 ./core/governance-pack/install.sh

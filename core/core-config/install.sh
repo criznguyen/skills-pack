@@ -6,20 +6,36 @@ set -euo pipefail
 # Source root is the directory of this script.
 #
 # Flags:
-#   --force   skip the interactive prompt before merging settings.json
-#   --dry-run print the planned diff and exit without modifying anything
+#   --force         skip the interactive prompt before merging settings.json
+#   --dry-run       print the planned diff and exit without modifying anything
+#   --project [P]   additionally install lint-touched.sh into <P>/.claude/hooks/
+#                   (P defaults to cwd; requires P to contain a .git/ directory)
 
 SRC="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TARGET="${TARGET:-${HOME}/.claude}"
 FORCE=0
 DRY_RUN=0
+PROJECT_TARGET=""
 
-for arg in "$@"; do
-  case "$arg" in
-    --force)   FORCE=1 ;;
-    --dry-run) DRY_RUN=1 ;;
-    -h|--help) sed -n '4,12p' "$0"; exit 0 ;;
-    *) echo "Unknown arg: $arg" >&2; exit 2 ;;
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --force)   FORCE=1; shift ;;
+    --dry-run) DRY_RUN=1; shift ;;
+    --project)
+      shift
+      if [[ $# -gt 0 && "$1" != --* ]]; then
+        PROJECT_TARGET="$1"
+        shift
+      else
+        PROJECT_TARGET="$(pwd)"
+      fi
+      if [[ ! -d "${PROJECT_TARGET}/.git" ]]; then
+        echo "ERR: --project target ${PROJECT_TARGET} has no .git/ directory" >&2
+        exit 2
+      fi
+      ;;
+    -h|--help) sed -n '4,14p' "$0"; exit 0 ;;
+    *) echo "Unknown arg: $1" >&2; exit 2 ;;
   esac
 done
 
@@ -139,10 +155,24 @@ echo "core-config installer"
 echo "  source: ${SRC}"
 echo "  target: ${TARGET}"
 
-install_file "${SRC}/CLAUDE.md"               "${TARGET}/CLAUDE.md"               0644
-install_file "${SRC}/hooks/anti-fantasy.sh"   "${TARGET}/hooks/anti-fantasy.sh"   0755
-install_file "${SRC}/hooks/blast-radius.sh"   "${TARGET}/hooks/blast-radius.sh"   0755
-install_file "${SRC}/hooks/pre-audit-gate.sh" "${TARGET}/hooks/pre-audit-gate.sh" 0755
-merge_settings "${SRC}/settings.json"         "${TARGET}/settings.json"
+install_file "${SRC}/CLAUDE.md"                  "${TARGET}/CLAUDE.md"                  0644
+install_file "${SRC}/hooks/anti-fantasy.sh"      "${TARGET}/hooks/anti-fantasy.sh"      0755
+install_file "${SRC}/hooks/blast-radius.sh"      "${TARGET}/hooks/blast-radius.sh"      0755
+install_file "${SRC}/hooks/pre-audit-gate.sh"    "${TARGET}/hooks/pre-audit-gate.sh"    0755
+install_file "${SRC}/hooks/block-destructive.sh" "${TARGET}/hooks/block-destructive.sh" 0755
+install_file "${SRC}/hooks/pre-edit-stash.sh"    "${TARGET}/hooks/pre-edit-stash.sh"    0755
+# lint-touched.sh is PROJECT-level — installed below if --project was passed.
+merge_settings "${SRC}/settings.json"            "${TARGET}/settings.json"
+
+if [[ -n "${PROJECT_TARGET}" ]]; then
+  echo "  project target: ${PROJECT_TARGET}/.claude/hooks/"
+  if [[ "${DRY_RUN}" -eq 1 ]]; then
+    echo "  [dry-run] would mkdir: ${PROJECT_TARGET}/.claude/hooks"
+  else
+    mkdir -p "${PROJECT_TARGET}/.claude/hooks"
+  fi
+  install_file "${SRC}/hooks/lint-touched.sh" \
+               "${PROJECT_TARGET}/.claude/hooks/lint-touched.sh" 0755
+fi
 
 echo "done."

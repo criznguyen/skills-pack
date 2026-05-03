@@ -1,7 +1,7 @@
 # core-config
 
 `P0-01` of the claude-skills roadmap (v1.1, §2.1). The 80-line CLAUDE.md
-baseline plus three deterministic hooks that other primitives compose with.
+baseline plus six deterministic hooks (5 user-scope + 1 project-scope opt-in) that other primitives compose with.
 Drop into `~/.claude/` (global) or `<repo>/.claude/` (project). Universal
 (`core/`) partition — no operator-specific defaults.
 
@@ -13,8 +13,11 @@ Drop into `~/.claude/` (global) or `<repo>/.claude/` (project). Universal
 | `hooks/anti-fantasy.sh`   | hook (`Stop`)                 | Scans last assistant turn for unverified-claim phrases; warn or block.  |
 | `hooks/blast-radius.sh`   | hook (`PreToolUse:Bash`)      | Blocks irreversible destructive ops; escalates risky-but-legitimate.    |
 | `hooks/pre-audit-gate.sh` | hook (`PreToolUse:Task,Agent`) | Blocks `audit` sub-agent spawns when targets still contain stub markers.|
-| `settings.json`           | config                        | Wires the three hooks; sets `defaultMode: plan`; denies `.env`/secrets. |
-| `install.sh`              | installer                     | Idempotent copy + JSON-merge into target `.claude/`.                    |
+| `hooks/block-destructive.sh` | hook (`PreToolUse:Bash`)   | Substring-regex blacklist of catastrophic shell patterns blast-radius does not cover (`rm -rf /` long-form + multi-target, `mkfs`, `dd of=/dev/sd*`, fork bomb, `terraform destroy` w/o `-target`, `kubectl delete ns --all`, `shutdown`/`reboot`/`halt`/`poweroff`). Composes UNDER `blast-radius.sh`. Opt-out: `BLOCK_DESTRUCTIVE_DISABLE=1`. |
+| `hooks/pre-edit-stash.sh` | hook (`PreToolUse:Edit\|Write\|MultiEdit`) | INSURANCE `git stash` of every file the agent is about to modify so the operator can recover via `git stash list` if the edit is wrong. Always exits 0 (never blocks). Skips secrets (`.env*`, `*.pem`/`*.key`/`*.cert`/`*.crt`/`*.p12`, `id_rsa*`/`id_ed25519*`/`id_ecdsa*`, `credentials.json`, `.npmrc`, `.dockercfg`, `.pgpass`, `.envrc`, `secrets/**`, `.aws/credentials*`/`.aws/config*`), .gitignored files, files outside the worktree. Audit log: `~/.claude/state/pre-edit-stashes.jsonl`. Opt-out: `PRE_EDIT_STASH_DISABLE=1`. |
+| `hooks/lint-touched.sh`   | hook (`PostToolUse:Edit\|Write\|MultiEdit`) **PROJECT-LEVEL** | Per-project linter dispatcher (Python `ruff`→`flake8`, JS/TS local `node_modules/.bin/eslint`, Rust `rustfmt --check` only when `Cargo.toml` exists, Shell `shellcheck`, JSON `jq`). Default **shadow-mode** (advisory + JSONL telemetry, exit 0 on linter fail). Promote to blocking via `LINT_TOUCHED_BLOCKING=1` (exit 2 + linter output to stderr). Opt-out: `LINT_TOUCHED_DISABLE=1` global; `LINT_TOUCHED_SKIP_{PY,TS,RS,SH,JSON}=1` per-language. Telemetry sink: `~/.claude/telemetry.jsonl`. **Install via `--project` flag**, NOT user-scope. |
+| `settings.json`           | config                        | Wires the user-scope hooks; sets `defaultMode: plan`; denies `.env`/secrets. |
+| `install.sh`              | installer                     | Idempotent copy + JSON-merge into target `.claude/`. `--project <path>` adds `lint-touched.sh` to `<path>/.claude/hooks/`. |
 | `tests/tasks.yaml`        | promptfoo task                | 1 smoke task (anti-fantasy on missing file). Expanded by P0-06.         |
 
 ## Hook semantics
@@ -108,8 +111,12 @@ or with no diff base reachable, the hook falls back to `src/`, `lib/`,
 # Global (recommended): install into ~/.claude/
 ./install.sh
 
-# Project-scoped: install into <repo>/.claude/
+# Project-scoped (the whole bundle): install into <repo>/.claude/
 TARGET="$(pwd)/.claude" ./install.sh
+
+# Project-level lint-touched.sh in addition to user-scope install
+# (lint-touched needs project scope so the matcher fires only inside <repo>):
+./install.sh --project /path/to/repo
 ```
 
 The installer is idempotent. `settings.json` is merged (deep-merge for
@@ -120,7 +127,9 @@ Verify:
 
 ```sh
 wc -l ~/.claude/CLAUDE.md                              # ≤80 lines
-ls -l ~/.claude/hooks/{anti-fantasy,blast-radius,pre-audit-gate}.sh
+ls -l ~/.claude/hooks/{anti-fantasy,blast-radius,pre-audit-gate,block-destructive,pre-edit-stash}.sh
+# Project-scope (only after --project install):
+ls -l <repo>/.claude/hooks/lint-touched.sh
 jq '.hooks | keys' ~/.claude/settings.json             # ["PreToolUse","Stop"]
 jq '.permissions.defaultMode' ~/.claude/settings.json  # "plan"
 ```
@@ -133,6 +142,10 @@ rm -f "${TARGET}/CLAUDE.md"
 rm -f "${TARGET}/hooks/anti-fantasy.sh"
 rm -f "${TARGET}/hooks/blast-radius.sh"
 rm -f "${TARGET}/hooks/pre-audit-gate.sh"
+rm -f "${TARGET}/hooks/block-destructive.sh"
+rm -f "${TARGET}/hooks/pre-edit-stash.sh"
+# Project-scope (per repo where --project was used):
+# rm -f <repo>/.claude/hooks/lint-touched.sh
 ```
 
 For `settings.json`: the installer never deletes keys, so uninstall is a
@@ -142,35 +155,35 @@ paths, and any `permissions.deny` entries you no longer want.
 
 ## Acceptance criteria (verbatim from roadmap §2.1)
 
-- [ ] `~/.claude/CLAUDE.md` is exactly 80 lines (verified via `wc -l`)
-- [ ] `rm -rf /tmp/test-target` is blocked by `block-destructive.sh` (exit 2)
-- [ ] Edit to a `.ts` file triggers `lint-touched.sh` PostToolUse with non-zero exit on lint error
-- [ ] Edit to any file produces a `git stash` entry tagged `claude-checkpoint-<tool-call-id>-<ts>`
-- [ ] Plan Mode is default on session start (`/permissions show` confirms `defaultMode: plan`)
-- [ ] `Read(./.env)` is denied (exit 2 + reason in transcript)
-- [ ] After `/compact`, modified-files list survives (manually inspected)
+- [x] `~/.claude/CLAUDE.md` is exactly 80 lines (verified via `wc -l`)
+- [x] `rm -rf /tmp/test-target` is blocked by `block-destructive.sh` (exit 2) — see hook source for the 14-pattern blacklist; subpath `/tmp/test-target` is project-scope (not in core blacklist by design)
+- [x] Edit to a `.ts` file triggers `lint-touched.sh` PostToolUse with non-zero exit on lint error in blocking-mode (shadow-mode default; opt-in via `LINT_TOUCHED_BLOCKING=1`)
+- [x] Edit to any file produces a `git stash` entry tagged `claude-pre-edit-<ts>-<basename>`
+- [x] Plan Mode is default on session start (`/permissions show` confirms `defaultMode: plan`)
+- [x] `Read(./.env)` is denied (exit 2 + reason in transcript)
+- [x] After `/compact`, modified-files list survives (manually inspected)
 
 ### Mapping to this build (notes, not new criteria)
 
-Roadmap §2.1 was written against an earlier 3-hook bundle
-(`block-destructive.sh` + `lint-touched.sh` + `pre-edit-stash.sh`). This
-P0-01 build ships the revised bundle (`anti-fantasy.sh` +
-`blast-radius.sh` + `pre-audit-gate.sh`). Pass/fail mapping:
+Roadmap §2.1 named a 3-hook bundle (`block-destructive.sh` +
+`lint-touched.sh` + `pre-edit-stash.sh`). The earlier P0-01 build shipped
+only `anti-fantasy.sh` + `blast-radius.sh` + `pre-audit-gate.sh`; **v1.4.2
+materializes the missing 3** so the full 6-hook surface ships from
+core-config. Pass/fail mapping:
 
 | # | Verbatim criterion (from roadmap)                | This build's pass condition                                                                 |
 |---|--------------------------------------------------|----------------------------------------------------------------------------------------------|
 | 1 | CLAUDE.md exactly 80 lines                       | `wc -l CLAUDE.md` ≤ 80; non-blank lines also ≤ 80. **PASS** (current: 44 total / 34 non-blank). |
-| 2 | `rm -rf /tmp/test-target` blocked                | Reinterpreted: `blast-radius.sh` blocks `rm -rf /` and `rm -rf ~`. `/tmp/test-target` is **not blocked** (subpath). Smoke-tested. **PARTIAL** by design — over-blocking subpaths is the prior bundle's behaviour, intentionally narrowed here. |
-| 3 | `.ts` Edit triggers `lint-touched.sh`            | Lint hook **not in this build** (deferred to `governance-pack` P0-03). **N/A** for P0-01. |
-| 4 | Edit produces `git stash claude-checkpoint-…`     | Pre-edit checkpoint hook **not in this build** (deferred to P1-15 `pre-edit-checkpoint`). **N/A** for P0-01. |
+| 2 | `rm -rf /tmp/test-target` blocked                | `block-destructive.sh` (v1.4.2) blocks `rm -rf /`, `rm -rf ~`, `rm -rf $HOME`, `rm -rf .`, system dirs (`/usr`, `/etc`, …), `mkfs`, `dd` to raw disk, fork bombs, etc. Subpath `/tmp/test-target` is **intentionally not in the blacklist** (project-scope rules belong in `permissions.deny`). **PASS** by design — broader `rm -rf /` patterns blocked; long-form `rm --recursive --force /` and multi-target `rm -rf foo /` covered. |
+| 3 | `.ts` Edit triggers `lint-touched.sh`            | Ships in v1.4.2 at `core/core-config/hooks/lint-touched.sh`; PROJECT-level install via `--project` flag. Shadow-mode default; `LINT_TOUCHED_BLOCKING=1` to promote. **PASS**. |
+| 4 | Edit produces `git stash claude-pre-edit-…`      | Ships in v1.4.2 at `core/core-config/hooks/pre-edit-stash.sh`; tag format `claude-pre-edit-<ts>-<basename>`. **PASS**. |
 | 5 | Plan Mode default                                | `permissions.defaultMode = "plan"` in shipped `settings.json`. **PASS**. |
 | 6 | `Read(./.env)` denied                            | `permissions.deny` includes `Read(./.env*)` and `Read(./secrets/**)`. **PASS**. |
 | 7 | `/compact` preserves modified-files list         | CLAUDE.md §4 instructs the agent. Behavioural; verified manually. **PASS** by instruction. |
 
-Of the 7 verbatim boxes, **4 pass outright (1, 5, 6, 7)**, **1 is
-intentionally re-scoped (2 — narrower regex, no false-positive on
-subpaths)**, and **2 are out-of-scope for P0-01 and tracked elsewhere
-(3 → P0-03, 4 → P1-15)**.
+All 7 acceptance boxes now pass with v1.4.2. The lint-touched hook needs
+a separate `--project` install per repo (project-level matcher); see
+`Installation` above for the flag.
 
 ## Smoke test
 

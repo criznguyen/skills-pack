@@ -249,12 +249,14 @@ if [ "$PROJECT_MODE" -eq 1 ]; then
 fi
 
 # --- 5. Compose-with-core-config check ----------------------------------
+# core-config v1.4.2+ ships these hooks unconditionally; pure-governance-pack
+# install (no core-config) still warns, since governance-pack composes ON TOP.
 log "Step 5: compose-with-core-config check"
 for required in block-destructive.sh pre-edit-stash.sh; do
   if [ ! -f "$CLAUDE_HOME/hooks/$required" ]; then
     log "  WARN: $CLAUDE_HOME/hooks/$required not found — install core-config (P0-01) first"
-    log "        for full coverage. governance-pack hooks will work without it but the"
-    log "        core-config 3-hook bundle will be missing."
+    log "        Run: ${GP_ROOT}/../core-config/install.sh"
+    log "        Otherwise the global-settings.json template will fail with exit 127."
   fi
 done
 

@@ -6,12 +6,32 @@
     "iteration_count": {
       "type": "integer",
       "minimum": 0,
-      "description": "Total PreToolUse fires this session."
+      "description": "Total PreToolUse fires this session. Equal to read_count + write_count. Preserved for backward compatibility (v1.6.0 and earlier emitted only this counter)."
     },
     "iteration_ceiling": {
       "type": "integer",
       "minimum": 1,
-      "description": "Hard ceiling; halt fires when iteration_count > iteration_ceiling. Default 150."
+      "description": "Global cap on iteration_count (read_count + write_count). Defaults to read_ceiling + write_ceiling + 100 when LOOP_BREAKER_ITER_CEILING is not set in env. v1.7.0+ — per-class ceilings (read_ceiling / write_ceiling) typically fire first; this remains as a global safety net and is the lever existing operator overrides set."
+    },
+    "read_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "v1.7.0+. PreToolUse fires for read-class tools (Read, Glob, Grep). Anti-fantasy mandates ~30 reads per agent before any write — those reads are not runaway behavior, so read_count gets its own (looser) ceiling."
+    },
+    "read_ceiling": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "v1.7.0+. Hard ceiling on read_count. Default 600 (LOOP_BREAKER_READ_CEILING). Sized for full-stack vertical-slice sub-agents and orchestrator-style main sessions that legitimately exceed the v1.6.0 single-counter cap of 150 with exploration reads."
+    },
+    "write_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "v1.7.0+. PreToolUse fires for write-class tools (Edit, Write, MultiEdit, Bash, Agent, Task, WebFetch, WebSearch, MCP, etc.). Write-class loops are the runaway-dangerous signal."
+    },
+    "write_ceiling": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "v1.7.0+. Hard ceiling on write_count. Default 150 (LOOP_BREAKER_WRITE_CEILING). Equals the v1.6.0 single-counter cap — preserves the runaway-write safety guard that motivated the original feature."
     },
     "usd_spent": {
       "type": "number",

@@ -102,7 +102,42 @@ run_case "push-no-verify-still-refused" \
 run_case "commit-no-verify-flag-still-refused" \
   "git commit --no-verify -m foo" "$WORK" 2 "git-push-gate-refused"
 
+# --- v1.7.0 hook-rename evasion detection ---------------------------------
+# 13. mv .git/hooks/pre-commit .git/hooks/commit-msg → refuse (any branch).
+run_case "mv-pre-commit-to-commit-msg" \
+  "mv .git/hooks/pre-commit .git/hooks/commit-msg" "$WORK" 2 "git-push-gate-refused"
+
+# 14. cp variant of the same evasion → refuse.
+run_case "cp-pre-commit-to-commit-msg" \
+  "cp .git/hooks/pre-commit .git/hooks/commit-msg" "$WORK" 2 "git-push-gate-refused"
+
+# 15. legitimate backup (no commit-msg in same chunk) → allow.
+run_case "backup-pre-commit" \
+  "cp .git/hooks/pre-commit /tmp/pre-commit-backup" "$WORK" 0 ""
+
+# 16. literal in commit message body → allow (argv-parse-aware).
+run_case "commit-msg-mentions-rename" \
+  'git commit -m "fix: rename pre-commit to commit-msg in docs"' "$WORK" 0 ""
+
+# 17. chained rename — pre-commit referenced AND commit-msg created → refuse.
+#     `mv .git/hooks/pre-commit .git/hooks/pre-commit.bak && cp /tmp/x .git/hooks/commit-msg`
+#     The mv chunk has only pre-commit (allow), but the cp chunk has commit-msg
+#     without pre-commit (allow). Total: this DOES slip past — documented as
+#     known limitation in SKILL.md. The detection covers the single-chunk
+#     evasion which is the canonical pattern.
+#     We DO refuse the literal `mv .git/hooks/pre-commit .git/hooks/commit-msg`,
+#     which is the simplest expression of the attack. Sophisticated obfuscation
+#     is beyond the gate's scope (documented).
+
+# 18. git mv .git/hooks/pre-commit .git/hooks/commit-msg (porcelain variant) → refuse.
+run_case "git-mv-pre-commit-to-commit-msg" \
+  "git mv .git/hooks/pre-commit .git/hooks/commit-msg" "$WORK" 2 "git-push-gate-refused"
+
+# 19. mv to .pre-commit.bak (unrelated rename, no commit-msg) → allow.
+run_case "rename-pre-commit-to-bak" \
+  "mv .git/hooks/pre-commit .git/hooks/pre-commit.bak" "$WORK" 0 ""
+
 if [ "$fail" -eq 0 ]; then
-  printf 'test-git-push-gate: PASS (12/12)\n'
+  printf 'test-git-push-gate: PASS (17/17)\n'
 fi
 exit "$fail"

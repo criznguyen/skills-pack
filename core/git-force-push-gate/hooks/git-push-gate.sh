@@ -79,6 +79,15 @@ fi
 # boundary, and only match flags that are real argv tokens — not bytes
 # inside a quoted string. python3 path preferred (matches §1 fallback);
 # bash path uses `eval set --` after a `bash -n` syntax check on a copy.
+#
+# v1.7.0: also detect the pre-commit→commit-msg rename evasion. If the
+# agent renames `.git/hooks/pre-commit` to `.git/hooks/commit-msg`, the
+# pre-commit hook stops running on commit, effectively achieving
+# `--no-verify` semantics without typing `--no-verify`. Detection:
+# inside one shell-meta chunk both `.git/hooks/pre-commit` AND
+# `commit-msg` literals are present and the chunk's first command is
+# `mv` or `cp` or a heredoc that creates the destination. Fires on
+# every branch (analogous to --no-verify).
 REASON=""
 if command -v python3 >/dev/null 2>&1; then
   REASON="$(printf '%s' "$TOOL_COMMAND" | python3 -c '
@@ -97,7 +106,23 @@ for t in toks:
     else:
         chunks[-1].append(t)
 for c in chunks:
-    if len(c) < 2 or c[0] != "git":
+    if len(c) < 2:
+        continue
+    # v1.7.0 hook-rename evasion check on this chunk. Only flag when:
+    #   - chunk leading command is a file-mover (mv, cp, install, ln)
+    #   - chunk contains a token referencing .git/hooks/pre-commit
+    #   - chunk contains a token referencing .git/hooks/commit-msg
+    # Both literals must appear as ARGV TOKENS (not bytes inside a
+    # quoted message body) — shlex.split already enforces that.
+    movers = ("mv", "cp", "install", "ln")
+    if c[0] in movers:
+        has_precommit = any(".git/hooks/pre-commit" in t for t in c[1:])
+        has_commitmsg = any(t.endswith(".git/hooks/commit-msg") or t.endswith("/commit-msg") and ".git/hooks/" in t for t in c[1:])
+        # Tighten: commit-msg must be inside a .git/hooks/ path, not a bare word.
+        has_commitmsg = any(".git/hooks/commit-msg" in t for t in c[1:])
+        if has_precommit and has_commitmsg:
+            print("hook_rename"); sys.exit(0)
+    if c[0] != "git":
         continue
     sub = c[1]
     rest = c[2:]
@@ -109,6 +134,13 @@ for c in chunks:
     elif sub == "commit":
         if "--no-verify" in rest:
             print("no_verify"); sys.exit(0)
+    elif sub == "mv":
+        # `git mv .git/hooks/pre-commit .git/hooks/commit-msg` — same
+        # evasion via the porcelain wrapper. Inspect rest for both literals.
+        has_precommit = any(".git/hooks/pre-commit" in t for t in rest)
+        has_commitmsg = any(".git/hooks/commit-msg" in t for t in rest)
+        if has_precommit and has_commitmsg:
+            print("hook_rename"); sys.exit(0)
 ' 2>/dev/null)"
 else
   # bash fallback. Syntax-check a copy via `bash -n` first so an
@@ -118,17 +150,43 @@ else
     if eval "set -- $TOOL_COMMAND" 2>/dev/null; then
       GIT_SEEN=0
       SUB=""
+      MOVER_SEEN=0
+      MOVER_HAS_PC=0
+      MOVER_HAS_CM=0
       while [ "$#" -gt 0 ]; do
         case "$1" in
           ";"|"&&"|"||"|"|")
             GIT_SEEN=0; SUB=""
+            MOVER_SEEN=0; MOVER_HAS_PC=0; MOVER_HAS_CM=0
+            ;;
+          mv|cp|install|ln)
+            # Only a "first-of-chunk" mover triggers the rename check;
+            # we approximate this by treating any mover token NOT preceded
+            # by a SUB as the chunk-leading mover.
+            if [ "$GIT_SEEN" -eq 0 ]; then
+              MOVER_SEEN=1; MOVER_HAS_PC=0; MOVER_HAS_CM=0
+            fi
             ;;
           git)
             GIT_SEEN=1; SUB=""
             ;;
           *)
+            if [ "$MOVER_SEEN" -eq 1 ]; then
+              case "$1" in
+                *.git/hooks/pre-commit*) MOVER_HAS_PC=1 ;;
+              esac
+              case "$1" in
+                *.git/hooks/commit-msg*) MOVER_HAS_CM=1 ;;
+              esac
+              if [ "$MOVER_HAS_PC" -eq 1 ] && [ "$MOVER_HAS_CM" -eq 1 ]; then
+                REASON="hook_rename"; break
+              fi
+            fi
             if [ "$GIT_SEEN" -eq 1 ] && [ -z "$SUB" ]; then
               SUB="$1"
+              if [ "$SUB" = "mv" ]; then
+                MOVER_SEEN=1; MOVER_HAS_PC=0; MOVER_HAS_CM=0
+              fi
             elif [ "$GIT_SEEN" -eq 1 ] && [ "$SUB" = "push" ]; then
               case "$1" in
                 --force|--force-with-lease|-f) REASON="force_push"; break ;;
@@ -162,9 +220,11 @@ fi
 # --- 4. Determine if branch is protected ---------------------------------
 IS_PROTECTED=0
 case "$REASON" in
-  no_verify)
-    # --no-verify is forbidden on every branch by design (it disables the
-    # very hook chain we depend on for safety).
+  no_verify|hook_rename)
+    # --no-verify and pre-commit→commit-msg rename evasion are forbidden
+    # on every branch by design — both disable the hook chain we depend on
+    # for safety. v1.7.0 added hook_rename per
+    # project_claude_skills_v2_0_shipped.md v2.2 candidate.
     IS_PROTECTED=1
     ;;
   force_push)
@@ -240,6 +300,9 @@ case "$REASON" in
     ;;
   no_verify)
     printf 'Bypass options: (1) export GIT_FORCE_PUSH_BYPASS_TOKEN=... (2) export GIT_FORCE_PUSH_GATE_DISABLE=1 — note: --no-verify is forbidden on every branch by design\n' >&2
+    ;;
+  hook_rename)
+    printf 'Bypass options: (1) export GIT_FORCE_PUSH_BYPASS_TOKEN=... (2) export GIT_FORCE_PUSH_GATE_DISABLE=1 — note: renaming .git/hooks/pre-commit to .git/hooks/commit-msg disables pre-commit verification (--no-verify equivalent) and is forbidden on every branch by design (v1.7.0)\n' >&2
     ;;
 esac
 exit 2

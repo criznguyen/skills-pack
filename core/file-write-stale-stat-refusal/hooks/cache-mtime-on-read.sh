@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
-# cache-mtime-on-read.sh — PostToolUse(Read). Appends {path,mtime,read_at}
-# to ~/.claude/sessions/<session_id>/file-stat.cache.
+# cache-mtime-on-read.sh — PostToolUse(Read|Edit|Write|MultiEdit).
+#
+# Appends {path,mtime,read_at} to ~/.claude/sessions/<session_id>/file-stat.cache
+# every time the agent ITSELF interacts with a file (Reads or modifies it).
+# Recording on Edit/Write/MultiEdit is required so consecutive same-agent
+# edits don't false-positive "drift" via the PreToolUse stat check
+# (the agent's own prior write would otherwise be flagged as external mtime
+# advance). Source: insight_file_stat_refusal_cache_not_updated_on_edit.md.
+#
+# Race window: between the PreToolUse stat-check and this PostToolUse cache
+# update is milliseconds; an external write that lands in that window slips
+# past until the next agent action on the file.
 #
 # Forbidden content (TM4): no LLM-spawn literals.
 
@@ -35,7 +45,14 @@ else
   exit 0
 fi
 
-[ "$TOOL_NAME" = "Read" ] || exit 0
+# v1.7.0: refresh cache on Read AND on Edit/Write/MultiEdit so consecutive
+# same-agent edits don't trip the drift check (the agent's own prior write
+# advances mtime, which would otherwise look like external drift from the
+# perspective of a Read-only cache).
+case "$TOOL_NAME" in
+  Read|Edit|Write|MultiEdit) ;;
+  *) exit 0 ;;
+esac
 [ -n "$FILE_PATH" ] || exit 0
 [ -e "$FILE_PATH" ] || exit 0
 

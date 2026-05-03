@@ -8,6 +8,83 @@ public mirror. For the full upstream history see
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) ·
 versions: [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## v1.7.0 — 2026-05-04
+
+Backlog ship — bundles 4 v2.x candidates from upstream claude-skills:
+2 skill bug fixes (loop-circuit-breaker false-positive on legitimate
+orchestration; file-write-stale-stat-refusal false-positive on
+consecutive same-agent edits) + 2 new detectors (installed-hook-drift
+reporter; pre-commit→commit-msg rename evasion grep in
+git-force-push-gate).
+
+### Changed
+
+- **`core/loop-circuit-breaker/`** — per-tool-class counter. The single
+  `iteration_count` (default cap 150) saturated 4-for-4 on real-world
+  orchestration sessions because anti-fantasy reads consumed the cap
+  before the build phase finished. v1.7.0 splits into:
+  - `read_count` for `Read`, `Glob`, `Grep` — default ceiling 600
+    (`LOOP_BREAKER_READ_CEILING`).
+  - `write_count` for every other tool — default ceiling 150
+    (`LOOP_BREAKER_WRITE_CEILING`).
+  - `iteration_count` preserved as `read_count + write_count` for
+    backward compat. `LOOP_BREAKER_ITER_CEILING` env still acts as a
+    global cap on the sum (defaults to `read_ceiling + write_ceiling +
+    100` when unset). Existing operator overrides keep working.
+  - Halt precedence reordered to `write_count → read_count →
+    iteration_count → usd_spent → hash_collisions`.
+  - New test: `tests/test-tool-class-counters.sh` (7/7 PASS).
+
+- **`core/file-write-stale-stat-refusal/`** — cache refresh on
+  Edit/Write/MultiEdit. PostToolUse matcher widened from `Read` to
+  `Read|Edit|Write|MultiEdit` so consecutive same-agent Edits no longer
+  false-positive the drift check (the agent's own prior write advances
+  mtime, which would otherwise look like external drift to the Read-only
+  cache). Race window between PreToolUse stat check and PostToolUse
+  cache update is milliseconds; a malicious external write that lands in
+  that gap will slip past until the next agent action on the file. Test
+  count moves 5/5 → 8/8.
+  - **Operator action required** for adopters with v1.6.0 install: live
+    `~/.claude/settings.json` PostToolUse matcher (currently `"Read"`)
+    needs to change to `"Read|Edit|Write|MultiEdit"`. Re-run
+    `bash core/governance-pack/install.sh` OR edit manually. Without
+    this update, the v1.6.0 same-agent-Edit false positive persists.
+
+- **`core/git-force-push-gate/`** — `pre-commit→commit-msg` rename
+  evasion detection. New `REASON` class `hook_rename` blocks the rename
+  on every branch when both `.git/hooks/pre-commit` AND
+  `.git/hooks/commit-msg` literals appear as argv tokens in the same
+  shell-meta chunk (covers `mv`, `cp`, `install`, `ln`, and `git mv`
+  variants). Argv-parse-aware so literal mentions in commit-message
+  bodies are ignored. Test count moves 12/12 → 17/17.
+  - Known limitations (documented in SKILL.md): multi-chunk obfuscation
+    and shell-var path expansion are NOT detected. The gate is a
+    guardrail against accidents and naive evasion, not a hardened
+    sandbox.
+
+### Added
+
+- **`core/installed-hook-drift/` skill (NEW)** — reporter that compares
+  each installed hook in `~/.claude/hooks/<group>/<hook>.sh` against the
+  canonical version in `<repo>/core/<group>/hooks/<hook>.sh`. Flags
+  drift (sha256 mismatch) and orphans (installed hook with no canonical
+  counterpart). JSONL output on stdout; exit 0 always (reporter, not
+  enforcer). Useful as a sanity check before filing "skill is broken"
+  issues — local drift from manual edits, partial git pulls, or
+  third-party tool overwrites is a common cause of unexplained skill
+  behavior. NOT auto-installed; operator opts in.
+
+### Backwards compatibility
+
+| Change | Impact | Migration |
+|---|---|---|
+| `LOOP_BREAKER_READ_CEILING` (new env, default 600) | Strictly looser cap on read-class tools | None — default absorbs existing usage. |
+| `LOOP_BREAKER_WRITE_CEILING` (new env, default 150) | Same as v1.6.0 single-counter cap, but only on write-class | None — write-runaway behavior preserved. |
+| `LOOP_BREAKER_ITER_CEILING` | Still works as global sum cap | None — existing overrides apply. |
+| `cache-mtime-on-read.sh` matcher | Hook accepts Read/Edit/Write/MultiEdit | Re-run `core/governance-pack/install.sh` to widen the live PostToolUse matcher. |
+| New skill `core/installed-hook-drift/` | Pure addition; no installer wiring | None — opt-in. |
+| `git-force-push-gate` `hook_rename` REASON | New blocker on every branch | None — paths that don't rename pre-commit→commit-msg are unaffected. |
+
 ## v1.6.0 — 2026-05-04
 
 ### Added

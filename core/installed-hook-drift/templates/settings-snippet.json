@@ -1,0 +1,17 @@
+{
+  "_comment": "Optional opt-in: run check-drift.sh on SessionStart. Operator opts in by jq-merging into ~/.claude/settings.json. Replace <REPO_ROOT> with the absolute path to your claude-skills checkout.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "<REPO_ROOT>/core/installed-hook-drift/hooks/check-drift.sh <REPO_ROOT> 1>&2",
+            "timeout": 5000
+          }
+        ]
+      }
+    ]
+  }
+}

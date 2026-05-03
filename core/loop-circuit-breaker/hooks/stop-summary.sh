@@ -39,9 +39,14 @@ try:
     c = json.load(open(path))
 except Exception:
     sys.exit(0)
-msg = "[loop-cb-summary] iteration_count={}/{} usd_spent={:.4f}/{:.2f} hash_collisions={} session={}".format(
+# v1.7.0: surface read_count and write_count alongside iteration_count.
+msg = "[loop-cb-summary] iteration_count={}/{} read_count={}/{} write_count={}/{} usd_spent={:.4f}/{:.2f} hash_collisions={} session={}".format(
     c.get("iteration_count", 0),
     c.get("iteration_ceiling", 0),
+    c.get("read_count", 0),
+    c.get("read_ceiling", 0),
+    c.get("write_count", 0),
+    c.get("write_ceiling", 0),
     float(c.get("usd_spent", 0) or 0),
     float(c.get("usd_ceiling", 0) or 0),
     c.get("hash_collisions", 0),
@@ -52,9 +57,13 @@ sys.stderr.write(msg + "\n")
 elif command -v jq >/dev/null 2>&1; then
   ITER="$(jq -r '.iteration_count // 0' "$COUNTERS_FILE")"
   CEIL="$(jq -r '.iteration_ceiling // 0' "$COUNTERS_FILE")"
+  RC="$(jq -r '.read_count // 0' "$COUNTERS_FILE")"
+  RCEIL="$(jq -r '.read_ceiling // 0' "$COUNTERS_FILE")"
+  WC="$(jq -r '.write_count // 0' "$COUNTERS_FILE")"
+  WCEIL="$(jq -r '.write_ceiling // 0' "$COUNTERS_FILE")"
   USD="$(jq -r '.usd_spent // 0' "$COUNTERS_FILE")"
-  printf '[loop-cb-summary] iteration_count=%s/%s usd_spent=%s session=%s\n' \
-    "$ITER" "$CEIL" "$USD" "$SESSION_ID" >&2
+  printf '[loop-cb-summary] iteration_count=%s/%s read_count=%s/%s write_count=%s/%s usd_spent=%s session=%s\n' \
+    "$ITER" "$CEIL" "$RC" "$RCEIL" "$WC" "$WCEIL" "$USD" "$SESSION_ID" >&2
 fi
 
 # Reset counters.

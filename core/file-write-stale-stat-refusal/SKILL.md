@@ -1,11 +1,11 @@
 ---
 name: file-write-stale-stat-refusal
-description: PreToolUse hook (matcher Edit|Write|MultiEdit) refusing writes when the target file's mtime drifted since the agent last Read it. Companion PostToolUse(Read) hook populates the cache. 5-second race-condition cooldown documented. Hard-block exit 2 with stderr advisory ("file was modified by another process since you last Read it; re-read before editing"). v2.0 P1 #3.
+description: PreToolUse hook (matcher Edit|Write|MultiEdit) refusing writes when the target file's mtime drifted since the agent last Read it. v1.7.0 — companion PostToolUse hook now matches Read|Edit|Write|MultiEdit so consecutive same-agent Edits no longer false-positive (cache mtime advances after every own-write). 5-second race-condition cooldown documented. Hard-block exit 2 with stderr advisory ("file was modified by another process since you last Read it; re-read before editing"). v2.0 P1 #3.
 type: governance
 tools: Edit, Write, MultiEdit, Read
 model: opus
 blast_radius: local-write
-last-validated: 2026-04-29
+last-validated: 2026-05-04
 ---
 
 # file-write-stale-stat-refusal
@@ -14,10 +14,22 @@ Charter §2.1 anti-fantasy + §2.2 hooks-over-rules. The "read-before-edit" disc
 
 Two hooks ship in this skill:
 
-1. **`hooks/cache-mtime-on-read.sh`** — PostToolUse(`Read`). Populates `~/.claude/sessions/<session_id>/file-stat.cache` with `{path, mtime}` per Read.
-2. **`hooks/file-stat-check.sh`** — PreToolUse(`Edit|Write|MultiEdit`). Looks up cached mtime; compares to current `stat -c %Y <path>`; refuses if drift > 0 AND the last Read was > `STALE_COOLDOWN_SEC` (default 5) seconds ago.
+1. **`hooks/cache-mtime-on-read.sh`** — PostToolUse(`Read|Edit|Write|MultiEdit`). Populates `~/.claude/sessions/<session_id>/file-stat.cache` with `{path, mtime}` after every own-tool interaction with the file. v1.7.0 expanded the matcher from `Read` only — without that, the agent's own consecutive Edits looked like external drift to the PreToolUse check.
+2. **`hooks/file-stat-check.sh`** — PreToolUse(`Edit|Write|MultiEdit`). Looks up cached mtime; compares to current `stat -c %Y <path>`; refuses if drift > 0 AND the last cache update was > `STALE_COOLDOWN_SEC` (default 5) seconds ago.
 
 The 5-second cooldown is the race-condition concession (the agent often Reads → Edits within milliseconds; in that window an external mtime change is unlikely and the cooldown prevents false positives from filesystem clock skew).
+
+### v1.7.0 — why the cache also updates on Edit/Write/MultiEdit
+
+Source: `insight_file_stat_refusal_cache_not_updated_on_edit.md`. Before v1.7.0 the cache was Read-only:
+
+```
+Read X     → cache mtime_at_read
+Edit X #1  → file mtime advances on disk; cache UNCHANGED
+Edit X #2  → check sees mtime_now > cached mtime_at_read → REFUSED (false positive)
+```
+
+The hook had no way to distinguish "I just modified it" from "another process modified it." Adding Edit/Write/MultiEdit to the cache-update matcher closes the same-agent false positive. The race window between PreToolUse stat check and PostToolUse cache update is milliseconds; a malicious external write that lands in that gap will slip past until the next agent action on the file.
 
 ## When to use
 
@@ -47,7 +59,7 @@ export FILE_WRITE_STALE_STAT_REFUSAL_DISABLE=1
 {"path":"/repo/src/x.go","mtime":1714400000,"read_at":1714400001}
 ```
 
-The hook scans the cache from the bottom (most recent wins) to find the latest Read of the path under check.
+The hook scans the cache from the bottom (most recent wins) to find the latest cache event for the path under check. Cache events come from Read, Edit, Write, and MultiEdit (v1.7.0+).
 
 ## Forbidden in hook bodies (TM4)
 
@@ -72,5 +84,6 @@ rm -rf ~/.claude/file-write-stale-stat-refusal ~/.claude/sessions/*/file-stat.ca
 
 ## References
 
+- Final report v2.0 plan: [`docs/research/harness-skills-required/00-final-report.md`](../../docs/research/harness-skills-required/00-final-report.md) §5 P1 #3
 - Charter §2.1 anti-fantasy: [`docs/synthesis/v1.1/charter-v1.1.md`](../../docs/synthesis/v1.1/charter-v1.1.md)
 - Companion to: [`core/core-config/hooks/pre-edit-stash.sh`](../core-config/hooks/pre-edit-stash.sh)

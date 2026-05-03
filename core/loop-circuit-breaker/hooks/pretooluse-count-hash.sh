@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
 # pretooluse-count-hash.sh — PreToolUse hook (matcher: *).
 #
-# Increments iteration_count, computes a canonical (tool_name + sorted keys)
-# sha256 hash, maintains a rolling 10-call window of hashes, and counts
-# collisions. Halts with exit 2 when:
-#   1. iteration_count > iteration_ceiling
-#   2. (usd_spent recorded by posttooluse-cost.sh) > usd_ceiling
-#   3. hash_collisions >= 3 in current window
+# v1.7.0: per-tool-class counter. Splits the original single iteration_count
+# into two tool-class counters that each have their own ceiling:
+#   - read_count   — Read, Glob, Grep                  (default 600)
+#   - write_count  — every other tool                  (default 150)
+# iteration_count = read_count + write_count is preserved for backward
+# compatibility, and the original LOOP_BREAKER_ITER_CEILING env still acts
+# as a global cap on the sum (so existing operator overrides keep working).
+#
+# Halts with exit 2 when:
+#   1. read_count   > LOOP_BREAKER_READ_CEILING  (default 600)
+#   2. write_count  > LOOP_BREAKER_WRITE_CEILING (default 150)
+#   3. (read+write) > LOOP_BREAKER_ITER_CEILING  (only if env explicitly set)
+#   4. (usd_spent recorded by posttooluse-cost.sh) > usd_ceiling
+#   5. hash_collisions >= 3 in current rolling 10-call window
 # Precedence per templates/precedence.md.
 #
 # Bypass: LOOP_BREAKER_BYPASS_TOKEN matching ~/.claude/loop-circuit-breaker/
@@ -25,7 +33,12 @@ INPUT="$(cat || true)"
 HOME_DIR="${HOME:-/root}"
 LCB_DIR="${LOOP_BREAKER_DIR:-$HOME_DIR/.claude/loop-circuit-breaker}"
 LCB_TOKEN_SHA="$LCB_DIR/bypass-token.sha"
-ITER_CEILING="${LOOP_BREAKER_ITER_CEILING:-150}"
+READ_CEILING="${LOOP_BREAKER_READ_CEILING:-600}"
+WRITE_CEILING="${LOOP_BREAKER_WRITE_CEILING:-150}"
+# ITER_CEILING acts as global sum-cap. When unset, default is high enough
+# (READ_CEILING + WRITE_CEILING + slack) that per-class halts fire first.
+DEFAULT_ITER_CEILING=$(( READ_CEILING + WRITE_CEILING + 100 ))
+ITER_CEILING="${LOOP_BREAKER_ITER_CEILING:-$DEFAULT_ITER_CEILING}"
 USD_CEILING="${LOOP_BREAKER_USD_CEILING:-25.0}"
 TELEM_FILE="${GOVERNANCE_PACK_TELEMETRY_FILE:-$HOME_DIR/.claude/telemetry.jsonl}"
 TELEM_DIR="$(dirname "$TELEM_FILE")"
@@ -67,6 +80,13 @@ if [ -n "${LOOP_BREAKER_BYPASS_TOKEN:-}" ] && [ -f "$LCB_TOKEN_SHA" ]; then
   fi
 fi
 
+# Tool-class assignment. Read-class = pure read tools (anti-fantasy reads
+# do not represent runaway). Everything else goes to write-class.
+TOOL_CLASS="write"
+case "$TOOL_NAME" in
+  Read|Glob|Grep) TOOL_CLASS="read" ;;
+esac
+
 CSESS_DIR="$HOME_DIR/.claude/sessions/$SESSION_ID"
 COUNTERS_FILE="$CSESS_DIR/counters.json"
 [ -d "$CSESS_DIR" ] || mkdir -p "$CSESS_DIR" 2>/dev/null || exit 0
@@ -89,15 +109,32 @@ else
 fi
 
 # Update counters via python (pass JSON over stdin to avoid shell quoting).
-UPDATED="$(printf '%s' "$COUNTERS_JSON" | LCB_THIS_HASH="$THIS_HASH" LCB_SESSION_ID="$SESSION_ID" LCB_ITER_CEILING="$ITER_CEILING" LCB_USD_CEILING="$USD_CEILING" python3 -c '
+UPDATED="$(printf '%s' "$COUNTERS_JSON" | \
+  LCB_THIS_HASH="$THIS_HASH" \
+  LCB_SESSION_ID="$SESSION_ID" \
+  LCB_TOOL_CLASS="$TOOL_CLASS" \
+  LCB_READ_CEILING="$READ_CEILING" \
+  LCB_WRITE_CEILING="$WRITE_CEILING" \
+  LCB_ITER_CEILING="$ITER_CEILING" \
+  LCB_USD_CEILING="$USD_CEILING" \
+  python3 -c '
 import json, os, sys
 try:
     c = json.load(sys.stdin)
     if not isinstance(c, dict): c = {}
 except Exception:
     c = {}
-iter_count = int(c.get("iteration_count", 0) or 0) + 1
-iter_ceiling = int(c.get("iteration_ceiling", 0) or 0) or int(os.environ.get("LCB_ITER_CEILING", "150"))
+tool_class = os.environ.get("LCB_TOOL_CLASS", "write")
+read_count = int(c.get("read_count", 0) or 0)
+write_count = int(c.get("write_count", 0) or 0)
+if tool_class == "read":
+    read_count += 1
+else:
+    write_count += 1
+iter_count = read_count + write_count
+read_ceiling = int(c.get("read_ceiling", 0) or 0) or int(os.environ.get("LCB_READ_CEILING", "600"))
+write_ceiling = int(c.get("write_ceiling", 0) or 0) or int(os.environ.get("LCB_WRITE_CEILING", "150"))
+iter_ceiling = int(c.get("iteration_ceiling", 0) or 0) or int(os.environ.get("LCB_ITER_CEILING", "850"))
 usd_spent = float(c.get("usd_spent", 0) or 0)
 usd_ceiling = float(c.get("usd_ceiling", 0) or 0) or float(os.environ.get("LCB_USD_CEILING", "25.0"))
 window = c.get("hash_window") or []
@@ -109,6 +146,10 @@ collisions = sum(1 for h in window if h == this_hash)
 out = {
   "iteration_count": iter_count,
   "iteration_ceiling": iter_ceiling,
+  "read_count": read_count,
+  "read_ceiling": read_ceiling,
+  "write_count": write_count,
+  "write_ceiling": write_ceiling,
   "usd_spent": usd_spent,
   "usd_ceiling": usd_ceiling,
   "hash_window": window,
@@ -123,6 +164,8 @@ print(json.dumps(out))
 printf '%s\n' "$UPDATED" > "$COUNTERS_FILE" 2>/dev/null || true
 
 # Extract values for halting decision.
+READ_C="$(printf '%s' "$UPDATED" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("read_count",0))')"
+WRITE_C="$(printf '%s' "$UPDATED" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("write_count",0))')"
 ITER="$(printf '%s' "$UPDATED" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("iteration_count",0))')"
 USD="$(printf '%s' "$UPDATED" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("usd_spent",0))')"
 COLL="$(printf '%s' "$UPDATED" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("hash_collisions",0))')"
@@ -136,7 +179,20 @@ emit_telemetry() {
     >> "$TELEM_FILE" 2>/dev/null || true
 }
 
-# Precedence: iteration → usd → collisions.
+# Precedence: write_count → read_count → iteration_count (sum) → usd → collisions.
+# write_count first: write-class halts are the dangerous-runaway signal.
+if [ "$WRITE_C" -gt "$WRITE_CEILING" ]; then
+  emit_telemetry "write_count" "$WRITE_C" "$WRITE_CEILING" "halt"
+  printf '[LOOP-CIRCUIT-BREAKER] halted: counter=write_count value=%s ceiling=%s\n' "$WRITE_C" "$WRITE_CEILING" >&2
+  exit 2
+fi
+
+if [ "$READ_C" -gt "$READ_CEILING" ]; then
+  emit_telemetry "read_count" "$READ_C" "$READ_CEILING" "halt"
+  printf '[LOOP-CIRCUIT-BREAKER] halted: counter=read_count value=%s ceiling=%s\n' "$READ_C" "$READ_CEILING" >&2
+  exit 2
+fi
+
 if [ "$ITER" -gt "$ITER_CEILING" ]; then
   emit_telemetry "iteration_count" "$ITER" "$ITER_CEILING" "halt"
   printf '[LOOP-CIRCUIT-BREAKER] halted: counter=iteration_count value=%s ceiling=%s\n' "$ITER" "$ITER_CEILING" >&2

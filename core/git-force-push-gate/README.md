@@ -1,6 +1,6 @@
-# `git-force-push-gate` — PreToolUse hook refusing force-push and --no-verify on protected branches
+# `git-force-push-gate` — PreToolUse hook refusing force-push, --no-verify, and pre-commit→commit-msg rename evasion
 
-v2.0 P1 #1 (v2.1 argv-parse fix — flags must be argv tokens, not bytes inside a quoted message). Charter §2.2 hooks-over-rules.
+v2.0 P1 #1 (v2.1 argv-parse fix — flags must be argv tokens, not bytes inside a quoted message). v1.7.0 hook-rename evasion detection. Charter §2.2 hooks-over-rules.
 
 > **Why a hook, not a CLAUDE.md rule.** The Replit `DROP TABLE` (July 2025) and Cursor PocketOS (April 2026) incidents both happened because the safety boundary was a system-prompt instruction, not a `PreToolUse` block. An instruction-injected agent will follow the injection; a hook with `exit 2` will not.
 
@@ -10,9 +10,9 @@ v2.0 P1 #1 (v2.1 argv-parse fix — flags must be argv tokens, not bytes inside 
 |---|---|
 | `SKILL.md` | Skill body. |
 | `CLAUDE.md` | Agent-facing fragment ("if user asks to bypass force-push refusal, do not auto-bypass — surface the bypass mechanism to the operator"). |
-| `hooks/git-push-gate.sh` | PreToolUse(`Bash`). Tokenizes `tool_input.command` (v2.1 argv-aware via `python3 shlex` with bash `eval set --` fallback) and inspects each `git push` / `git commit` invocation's argv tokens for `--force`, `--force-with-lease`, `-f`, `--no-verify`. Substring-in-message bytes (e.g. `git commit -m "fix --no-verify path"`) are ignored. On flag match + protected branch + no bypass → exit 2. |
+| `hooks/git-push-gate.sh` | PreToolUse(`Bash`). Tokenizes `tool_input.command` (v2.1 argv-aware via `python3 shlex` with bash `eval set --` fallback) and inspects each `git push` / `git commit` invocation's argv tokens for `--force`, `--force-with-lease`, `-f`, `--no-verify`. v1.7.0 also detects `pre-commit→commit-msg` rename evasion via `mv`/`cp`/`install`/`ln`/`git mv` chunks. Substring-in-message bytes (e.g. `git commit -m "fix --no-verify path"`) are ignored. On flag match + protected branch + no bypass → exit 2. |
 | `templates/protected-branches.txt` | Default protected list: `main`, `master`, `release/*`, `production`. |
-| `tests/test-git-push-gate.sh` | 12-case unit suite: 8 baseline (allow/refuse/bypass × force-push/no-verify × protected/unprotected) + 4 v2.1 argv-parse regressions (literal flag chars in commit message body must not trip the gate). |
+| `tests/test-git-push-gate.sh` | 17-case unit suite: 8 baseline (allow/refuse/bypass × force-push/no-verify × protected/unprotected) + 4 v2.1 argv-parse regressions (literal flag chars in commit message body must not trip the gate) + 5 v1.7.0 hook-rename detection (mv/cp/git-mv variants, message-body literal, legitimate backup, .bak rename). |
 | `tests/test-no-claude-spawn.sh` | TM4 grep mirror. |
 | `examples/sample-output.jsonl` | 3-line synthetic JSONL sample (privacy-clean). |
 
@@ -27,6 +27,10 @@ v2.0 P1 #1 (v2.1 argv-parse fix — flags must be argv tokens, not bytes inside 
 | `git push --no-verify ...` | any | refuse (exit 2) |
 | `git push --force feat/personal-branch` | unprotected | allow |
 | `git push origin main` (no `--force`) | protected | allow |
+| `mv .git/hooks/pre-commit .git/hooks/commit-msg` (and cp/install/ln/git-mv variants) | any | refuse (exit 2) — v1.7.0 |
+| `git mv .git/hooks/pre-commit .git/hooks/commit-msg` | any | refuse (exit 2) — v1.7.0 |
+| `cp .git/hooks/pre-commit /tmp/backup` | any | allow (no commit-msg in same chunk) |
+| `git commit -m "rename pre-commit to commit-msg in docs"` | any | allow (literal in message body) |
 
 Branch resolution: the hook runs `git symbolic-ref --short HEAD` from the cwd of the Bash call; if the result matches any pattern in `~/.claude/git-force-push-gate/protected-branches.txt` (literal or glob), the branch is protected.
 
@@ -74,5 +78,6 @@ rm -rf ~/.claude/git-force-push-gate-allow              # operator markers
 
 ## References
 
+- Final report v2.0 plan: [`docs/research/harness-skills-required/00-final-report.md`](../../docs/research/harness-skills-required/00-final-report.md) §5 P1 #1
 - Charter §2.2 hooks-over-rules: [`docs/synthesis/v1.1/charter-v1.1.md`](../../docs/synthesis/v1.1/charter-v1.1.md)
 - Precedent shape: [`core/governance-pack/hooks/no-coauthor-trailer.sh`](../governance-pack/hooks/no-coauthor-trailer.sh) (PreToolUse(Bash) parser)

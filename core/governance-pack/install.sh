@@ -694,7 +694,7 @@ else
         .hooks //= {}
         | .hooks.PostToolUse //= []
         | .hooks.PreToolUse //= []
-        | .hooks.PostToolUse += [{"matcher":"Read","hooks":[{"type":"command","command":$cache,"timeout":5000}]}]
+        | .hooks.PostToolUse += [{"matcher":"Read|Edit|Write|MultiEdit","hooks":[{"type":"command","command":$cache,"timeout":5000}]}]
         | .hooks.PreToolUse += [{"matcher":"Edit|Write|MultiEdit","hooks":[{"type":"command","command":$check,"timeout":5000}]}]
       ' "$SETTINGS_DST" > "$TMP" && mv "$TMP" "$SETTINGS_DST"
       log "  registered file-write-stale-stat-refusal (backup: $BAK)"

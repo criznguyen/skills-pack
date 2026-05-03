@@ -1,0 +1,2 @@
+{"status":"drift","installed":"/home/u/.claude/hooks/loop-circuit-breaker/pretooluse-count-hash.sh","canonical":"/home/u/src/claude-skills/core/loop-circuit-breaker/hooks/pretooluse-count-hash.sh","group":"loop-circuit-breaker","installed_sha":"a1b2c3d4e5f6...","canonical_sha":"c3d4e5f6a7b8..."}
+{"status":"orphan","installed":"/home/u/.claude/hooks/custom/my-personal-hook.sh","canonical":null,"group":"custom"}

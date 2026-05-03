@@ -1,11 +1,11 @@
 ---
 name: git-force-push-gate
-description: PreToolUse hook (matcher Bash) refusing `git push --force` / `--force-with-lease` and `git commit --no-verify` / `git push --no-verify` on protected branches (`main`, `master`, `release/*`, `production`). Hard-block exit 2 with stderr advisory; bypass only via per-branch marker file `~/.claude/git-force-push-gate-allow/<branch>` or `GIT_FORCE_PUSH_BYPASS_TOKEN` env-var. v2.0 P1 #1.
+description: PreToolUse hook (matcher Bash) refusing `git push --force` / `--force-with-lease` (on protected branches), `git commit --no-verify` / `git push --no-verify` (any branch), and v1.7.0 the `pre-commit→commit-msg` rename evasion (any branch — `mv .git/hooks/pre-commit .git/hooks/commit-msg` and friends, including the `git mv` porcelain variant). Hard-block exit 2 with stderr advisory; bypass only via per-branch marker file `~/.claude/git-force-push-gate-allow/<branch>` or `GIT_FORCE_PUSH_BYPASS_TOKEN` env-var. v2.0 P1 #1.
 type: governance
 tools: Bash, Read, Grep
 model: opus
 blast_radius: external-side-effect
-last-validated: 2026-04-29
+last-validated: 2026-05-04
 ---
 
 # git-force-push-gate
@@ -20,6 +20,7 @@ Auto-installed by `core/governance-pack/install.sh` Step 11. Operators who run s
 - `git push --force-with-lease ...` on protected branches.
 - `git commit --no-verify ...` (any branch — `--no-verify` skips pre-commit hooks, which is itself the abuse).
 - `git push --no-verify ...` (any branch).
+- v1.7.0 — `pre-commit → commit-msg` rename evasion (any branch). Renaming `.git/hooks/pre-commit` to `.git/hooks/commit-msg` (via `mv`, `cp`, `install`, `ln`, or `git mv`) effectively achieves `--no-verify` semantics without typing the flag, because pre-commit hooks no longer fire on commit. The gate catches this when both `.git/hooks/pre-commit` and `.git/hooks/commit-msg` literals appear as argv tokens in the same shell-meta chunk.
 
 The default protected list lives in `~/.claude/git-force-push-gate/protected-branches.txt`:
 
@@ -46,9 +47,16 @@ The hook reads the file every invocation; operator edits take effect immediately
 
 The default install does NOT seed `bypass-token.sha`, so option 2 is unavailable until the operator opts in.
 
-## Parse semantics (v2.1)
+## Parse semantics (v2.1, extended in v1.7.0)
 
 `hooks/git-push-gate.sh` tokenizes `tool_input.command` via `python3 shlex.split` (preferred) or a bash `eval set --` fallback gated by a `bash -n` syntax check. Only flags that arrive as their own argv tokens are matched — `--no-verify` or `--force` appearing as bytes inside a quoted commit-message body (e.g. `git commit -m "fix --no-verify path"`) is ignored. Shell-meta operators (`;`, `&&`, `||`, `|`) split the token stream so each `git` invocation is inspected in isolation.
+
+v1.7.0 hook-rename detection re-uses the same chunked-token model. A chunk leading with `mv`, `cp`, `install`, `ln`, or `git mv` is inspected for both `.git/hooks/pre-commit` AND `.git/hooks/commit-msg` argv tokens. When both are present in the chunk, `REASON=hook_rename` and the gate refuses on every branch (analogous to `--no-verify`).
+
+### Known limitations
+
+- Multi-chunk obfuscation (`mv .git/hooks/pre-commit .pre.bak && cp /tmp/x .git/hooks/commit-msg`) is NOT detected because the two literals appear in different chunks. The gate is a guardrail against accidents and naive evasion, not a hardened sandbox.
+- Path-shell-expansion (`mv $HOME/.../pre-commit $HOME/.../commit-msg`) is NOT detected if the expansion happens at the time the gate inspects the literal command string. The gate inspects the un-expanded `tool_input.command`.
 
 ## Forbidden in hook bodies (TM4)
 
@@ -75,6 +83,7 @@ rm -rf ~/.claude/git-force-push-gate ~/.claude/git-force-push-gate-allow
 
 ## References
 
+- Final report v2.0 plan: [`docs/research/harness-skills-required/00-final-report.md`](../../docs/research/harness-skills-required/00-final-report.md) §5 P1 #1
 - Charter §2.2 hooks-over-rules: [`docs/synthesis/v1.1/charter-v1.1.md`](../../docs/synthesis/v1.1/charter-v1.1.md)
 - Replit DROP TABLE incident: <https://fortune.com/2025/07/23/ai-coding-tool-replit-wiped-database>
 - Cursor PocketOS incident: <https://www.theregister.com/2026/04/27/cursoropus_agent_snuffs_out_pocketos/>

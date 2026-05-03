@@ -189,3 +189,90 @@ jq -r '.hooks | .. | .command? // empty' ~/.claude/settings.json | grep governan
 # Confirm deny list contains the basics
 jq -r '.permissions.deny[]' ~/.claude/settings.json | grep -E '\.env|secrets|curl'
 ```
+
+---
+
+## Case 5 — per-project allowlist (v1.4.3+)
+
+The v1.4.2 universal denylist (`**/auth/**`, `**/migrations/**`,
+`**/billing/**`, etc.) protects every project but over-fires when a project
+enters surge work IN those paths. v1.4.3 adds a per-project allowlist
+(`<project>/.claude/governance-allow.txt`) that wins over the universal
+denylist for THAT PROJECT ONLY, with full JSONL audit trail.
+
+### Setup
+
+```bash
+# project root has .git/, so the hook's auto-detection finds it
+cd <project-root>
+mkdir -p .claude
+
+# add patterns to allowlist (same glob format as prod-paths.txt)
+cat > .claude/governance-allow.txt <<'EOF'
+# audit-remediation 2026-05-03 — closing 14 FAIL findings
+# REMOVE THIS FILE AFTER REMEDIATION COMMIT LANDS
+internal/auth/**
+db/migrations/**
+EOF
+```
+
+### Verify the hook allows + audit-logs
+
+Trigger an `Edit` on a path matching the allowlist. The PreToolUse hook chain
+fires; `deny-prod-paths.sh` walks up to find `.git/`, reads
+`.claude/governance-allow.txt`, matches the pattern, exits 0, and appends a
+JSONL line:
+
+```bash
+# manual smoke-test (mimics what Claude's Edit tool emits to stdin):
+echo '{"tool_name":"Edit","tool_input":{"file_path":"'"$PWD"'/internal/auth/middleware.go"}}' \
+  | bash ~/.claude/hooks/governance-pack/deny-prod-paths.sh
+echo "exit=$?"
+# → exit=0 (allowed)
+```
+
+### Inspect the audit log
+
+```bash
+cat .claude/state/governance-allow.jsonl | jq .
+```
+
+Each entry includes the timestamp, tool name, file path, the matched glob
+pattern, and the allow-file source — sufficient for a reviewer to
+post-hoc-validate that sensitive-path edits during the surge were intentional
+and within the agreed allowlist scope.
+
+```json
+{
+  "ts": "2026-05-03T13:09:25Z",
+  "tool": "Edit",
+  "file_path": "/home/criznguyen/projects/ciscrm/internal/auth/middleware.go",
+  "matched_pattern": "internal/auth/**",
+  "allow_file": "/home/criznguyen/projects/ciscrm/.claude/governance-allow.txt",
+  "reason": "governance-allow match"
+}
+```
+
+### Tear-down
+
+After remediation lands and the audit cycle re-passes, remove the allowlist
+file (the universal denylist resumes automatically — no global state change):
+
+```bash
+rm .claude/governance-allow.txt
+```
+
+The audit log (`.claude/state/governance-allow.jsonl`) is preserved for
+review; either commit it or wipe per your repo policy.
+
+### Negative-case sanity check
+
+Without the allowlist file present, the same Edit attempt is blocked:
+
+```bash
+rm -f .claude/governance-allow.txt
+echo '{"tool_name":"Edit","tool_input":{"file_path":"'"$PWD"'/internal/auth/middleware.go"}}' \
+  | bash ~/.claude/hooks/governance-pack/deny-prod-paths.sh
+echo "exit=$?"
+# → exit=2 (BLOCKED — matched pattern: **/auth/**)
+```

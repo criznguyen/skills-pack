@@ -8,6 +8,74 @@ public mirror. For the full upstream history see
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) ·
 versions: [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## v1.4.3 — 2026-05-03
+
+### Added
+
+- **Per-project governance allowlist** — `<project_root>/.claude/governance-allow.txt`.
+  Solves the v1.4.2 universal-denylist over-fire problem: when a project does
+  intensive work in protected paths (audit-remediation on `internal/auth/`,
+  schema-redo across `db/migrations/`, billing refactor), the operator lists
+  glob patterns that win over the universal denylist FOR THIS PROJECT ONLY.
+  Universal protection for every other project is preserved.
+- **Allow-wins semantics** — `deny-prod-paths.sh` walks up from the candidate
+  file's directory looking for `.git/`. The first ancestor with `.git/` is
+  the project root. If `.claude/governance-allow.txt` exists and a glob
+  matches, the write is allowed (`exit 0`) AND audit-logged to
+  `.claude/state/governance-allow.jsonl` for traceability — every allowed
+  write that would otherwise have been denied is recorded with
+  `{ts, tool, file_path, matched_pattern, allow_file, reason}`.
+- 2 new env overrides for advanced operators / tests:
+  `GOVERNANCE_PACK_ALLOW_FILE` and `GOVERNANCE_PACK_AUDIT_LOG_FILE` (both
+  honor `/dev/null` for session-only disable).
+- README "Per-project allowlist (v1.4.3+)" section + EXAMPLES Case 5
+  walkthrough.
+
+### Changed
+
+- `core/governance-pack/hooks/deny-prod-paths.sh` — allowlist check inserted
+  BEFORE the existing denylist loop. Behavior for projects without an
+  allow-file is byte-for-byte unchanged. Stderr deny message gains a hint
+  pointing at the allowlist mechanism.
+
+### Backwards compatibility
+
+ALL projects without `.claude/governance-allow.txt` see ZERO behavior change.
+The allowlist is opt-in per-project; existing universal denylist (v1.4.2
+patterns: `**/auth/**`, `**/security/**`, `**/billing/**`, `**/migrations/**`,
+`**/.env*`, `**/secrets/**`, `**/credentials/**`, `**/*.pem`, `**/*.key`,
+`**/id_rsa*`, `**/terraform/prod/**`, etc.) still protects every project
+that has not opted in.
+
+### Upstream commits
+
+- `7f71bbd` feat: v1.4.3 governance-pack per-project allowlist with audit-log
+- `83590af` merge: v1.4.3 governance-allow on top of v1.4.2.1
+
+## v1.4.2.1 — 2026-05-03
+
+### Fixed
+
+- **CRITICAL hotfix**: `pre-edit-stash.sh` previously used
+  `git stash push --keep-index --include-untracked --quiet -m … -- <path>`,
+  which MOVES the targeted file's uncommitted changes off the worktree
+  (= silent revert to HEAD) before the agent's Edit/Write runs. Sequential
+  Edit/Write operations on the same file lost all but the last change;
+  multi-step refactors silently reverted between tool invocations.
+- Replaced `stash push` with `git stash create` + `git stash store`. The
+  `create` primitive snapshots the worktree into a stash commit object
+  WITHOUT touching the working tree; `store` records it in the stash list.
+  The operator's recovery contract (`git stash list` shows pre-edit
+  snapshots) is preserved; the silent-revert side-effect is gone.
+- `git stash create` is content-addressed by the worktree tree, so multiple
+  invocations against an unchanged worktree dedup to 1 stash entry. JSONL
+  log still grows per-invocation so operators can audit which file each
+  call targeted.
+
+### Upstream commits
+
+- `dc367b9` fix: v1.4.2.1 pre-edit-stash uses stash create/store, no longer reverts worktree
+
 ## v1.4.2 — 2026-05-03
 
 ### Fixed

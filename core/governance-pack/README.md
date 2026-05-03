@@ -362,3 +362,98 @@ gap, and the procedure for adding a 6th PreToolUse hook.
 - Hook-level (not prompt-level) freeze rationale: review/EXPERT-1-methodologist.md F-strongest #3
 - Co-author preference: user `feedback_no_claude_coauthor`
 - Composes-with-core-config layering: roadmap-v1.1 §2.1 + §2.3
+
+---
+
+## Per-project allowlist (v1.4.3+)
+
+`deny-prod-paths.sh`'s universal denylist is the right INTENT — protect every
+project from agent-driven production-surface mishaps. But the universal
+denylist over-fires when a project enters intensive work IN those protected
+paths: an audit-remediation cycle on `internal/auth/`, a migration redo across
+`db/migrations/`, a billing-engine refactor under `internal/billing/`. Without
+an escape hatch, the operator has to disable the hook globally — which loses
+the protection for every other project for the duration of the work.
+
+v1.4.3 adds a per-project allowlist: `<project_root>/.claude/governance-allow.txt`
+(same glob format as `prod-paths.txt`, one pattern per line, `#` comments,
+blank lines OK). When this file exists and a candidate write path matches a
+pattern in it, `deny-prod-paths.sh` allows the write **and audit-logs** the
+event to `<project_root>/.claude/state/governance-allow.jsonl` for traceability.
+Universal denylist still catches everything that's NOT explicitly allowed
+per-project.
+
+### Allow-wins semantics
+
+1. The hook computes `project_root` by walking up from the candidate file's
+   directory looking for `.git/`. First ancestor containing `.git/` wins.
+2. If `<project_root>/.claude/governance-allow.txt` exists, each pattern is
+   glob-matched against the absolute path. **First match → exit 0** (allow),
+   JSONL audit entry written.
+3. Otherwise, fall through to the existing universal denylist (unchanged).
+
+### When to use
+
+- Audit-remediation phase — sub-agent must touch many files inside protected
+  globs to close findings.
+- Refactor / schema-redo work concentrated in a protected directory tree
+  (per-feature surge of activity, not steady-state edits).
+- Onboarding a new module that the universal denylist's `**/auth/**` etc.
+  catches by accident (path-naming convention false-positive).
+
+### When NOT to use
+
+- Steady-state daily work — the universal denylist is the correct gate.
+- Cross-project pattern bypass — the allowlist is per-project by design;
+  patterns in `<project>/.claude/governance-allow.txt` do not affect siblings.
+- Disabling the hook entirely — use `unset GOVERNANCE_PACK_PROD_PATHS_FILE`
+  or comment the patterns in `~/.claude/prod-paths.txt` instead. Allowlist is
+  for surgical exemption, not bulk disable.
+
+### File format
+
+Identical to `~/.claude/prod-paths.txt`:
+
+```
+# audit-remediation 2026-05-03 — required for closing 14 FAIL findings
+internal/auth/**
+db/migrations/**
+**/billing/**
+
+# blank lines and # comments allowed
+```
+
+The patterns are matched against the absolute path AND the original
+(possibly relative) `file_path` extracted from the tool input — same matching
+logic as the denylist, so semantics carry over.
+
+### Audit log location
+
+`<project_root>/.claude/state/governance-allow.jsonl` (one JSON object per
+line). Each entry:
+
+```json
+{"ts":"2026-05-03T13:09:25Z","tool":"Edit","file_path":"/abs/path/file.go","matched_pattern":"**/auth/**","allow_file":"/abs/path/.claude/governance-allow.txt","reason":"governance-allow match"}
+```
+
+Inspect with `jq`:
+
+```bash
+jq . <project>/.claude/state/governance-allow.jsonl
+```
+
+This log is the audit trail for the per-project escape hatch. Reviewers
+checking whether sensitive-path edits were intentional can grep this file
+post-hoc.
+
+### Env overrides
+
+| Var | Effect | Default |
+|---|---|---|
+| `GOVERNANCE_PACK_ALLOW_FILE` | Override the allowlist location | `<project_root>/.claude/governance-allow.txt` |
+| `GOVERNANCE_PACK_AUDIT_LOG_FILE` | Override the JSONL audit log location | `<project_root>/.claude/state/governance-allow.jsonl` |
+
+Both honor `/dev/null` as a session-only disable (no file → no allow,
+denylist still applies). Both are useful primarily for tests; production
+operators are expected to use the default paths so the audit trail is
+discoverable by reviewers via convention.

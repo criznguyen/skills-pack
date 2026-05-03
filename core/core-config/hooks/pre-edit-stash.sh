@@ -3,16 +3,22 @@ set -uo pipefail
 
 # core-config / pre-edit-stash
 # PreToolUse hook for Edit|Write|MultiEdit. INSURANCE stash of the worktree
-# state of the file the agent is about to modify, so the operator can recover
-# their pre-edit state via `git stash list` if the agent's edit is wrong.
+# state BEFORE the agent edits a file, so the operator can recover their
+# pre-edit state via `git stash list` if the agent's edit is wrong.
 #
 # This is INSURANCE, not a gate. ALWAYS exits 0; never blocks. Skip cases
 # (silent exit 0, no stash, no JSONL): empty file_path / file does not exist
 # / not in git repo / .gitignored / outside worktree / file matches deny
 # pattern (.env*, secrets/**, *.pem, *.key, id_rsa*) / file is clean.
 #
+# Stash primitive: `git stash create` (snapshot commit object) +
+# `git stash store` (record in stash list). This pair leaves the working
+# tree UNTOUCHED — unlike `git stash push` which moves changes off the
+# worktree and would silently revert in-flight agent edits between
+# sequential Edit/Write invocations (v1.4.2 bug, fixed v1.4.2.1).
+#
 # Side effect on stash: append one JSONL line to ~/.claude/state/pre-edit-stashes.jsonl.
-# On git-stash failure: append JSONL line with `error` field; emit stderr
+# On git failure: append JSONL line with `error` field; emit stderr
 # advisory; STILL exit 0.
 #
 # Opt-out: PRE_EDIT_STASH_DISABLE={1,true,TRUE} → exit 0 silent regardless.
@@ -121,22 +127,17 @@ json_escape() {
   printf '%s' "$s"
 }
 
+# Use `stash create` + `stash store`: this snapshots the worktree into a
+# stash commit object WITHOUT modifying the working tree, then records the
+# object in the stash list. v1.4.2 used `stash push --keep-index` which
+# moves changes off the worktree (= silently reverts in-flight agent edits
+# between sequential Edit/Write invocations). v1.4.2.1 fix.
 stash_err_tmp="$(mktemp 2>/dev/null || printf '/tmp/pre-edit-stash.err.%s' "$$")"
-if git -C "${repo_root}" stash push --keep-index --include-untracked --quiet \
-     -m "${stash_msg}" -- "${abs_path}" 2>"${stash_err_tmp}"; then
-  stash_ref="$(git -C "${repo_root}" rev-parse --verify --short stash@{0} 2>/dev/null || printf 'unknown')"
-  if ! printf '{"ts":"%s","session":"%s","tool":"%s","file":"%s","stash_ref":"%s","stash_msg":"%s"}\n' \
-        "${ts_iso}" \
-        "$(json_escape "${session_id}")" \
-        "$(json_escape "${tool_name}")" \
-        "$(json_escape "${abs_path}")" \
-        "$(json_escape "${stash_ref}")" \
-        "$(json_escape "${stash_msg}")" \
-        >> "${jsonl_path}" 2>/dev/null
-  then
-    echo "[pre-edit-stash] cannot write JSONL log to ${jsonl_path}" >&2
-  fi
-else
+stash_ref="$(git -C "${repo_root}" stash create 2>"${stash_err_tmp}")"
+create_status=$?
+
+if [[ ${create_status} -ne 0 ]]; then
+  # `git stash create` failed (rare: corrupt repo, hook env issue).
   err_raw="$(head -c 200 "${stash_err_tmp}" 2>/dev/null || printf '')"
   if ! printf '{"ts":"%s","session":"%s","tool":"%s","file":"%s","stash_ref":"unknown","stash_msg":"%s","error":"%s"}\n' \
         "${ts_iso}" \
@@ -149,7 +150,45 @@ else
   then
     echo "[pre-edit-stash] cannot write JSONL log to ${jsonl_path}" >&2
   fi
-  echo "[pre-edit-stash] git stash failed for ${abs_path} (advisory; exit 0)" >&2
+  echo "[pre-edit-stash] git stash create failed for ${abs_path} (advisory; exit 0)" >&2
+elif [[ -z "${stash_ref}" ]]; then
+  # Empty output: nothing to stash (worktree clean relative to HEAD globally).
+  # This can happen if the file's diff was only-staged-not-worktree, or the
+  # change was already committed between the dirty-check and stash-create.
+  # Treat as no-op success: no JSONL line, no stderr noise, exit 0.
+  :
+else
+  # Got a stash commit object. Record it in the stash list.
+  store_err_tmp="$(mktemp 2>/dev/null || printf '/tmp/pre-edit-stash.store.err.%s' "$$")"
+  if git -C "${repo_root}" stash store -m "${stash_msg}" "${stash_ref}" 2>"${store_err_tmp}"; then
+    short_ref="$(git -C "${repo_root}" rev-parse --verify --short "${stash_ref}" 2>/dev/null || printf '%s' "${stash_ref}" | cut -c1-7)"
+    if ! printf '{"ts":"%s","session":"%s","tool":"%s","file":"%s","stash_ref":"%s","stash_msg":"%s"}\n' \
+          "${ts_iso}" \
+          "$(json_escape "${session_id}")" \
+          "$(json_escape "${tool_name}")" \
+          "$(json_escape "${abs_path}")" \
+          "$(json_escape "${short_ref}")" \
+          "$(json_escape "${stash_msg}")" \
+          >> "${jsonl_path}" 2>/dev/null
+    then
+      echo "[pre-edit-stash] cannot write JSONL log to ${jsonl_path}" >&2
+    fi
+  else
+    err_raw="$(head -c 200 "${store_err_tmp}" 2>/dev/null || printf '')"
+    if ! printf '{"ts":"%s","session":"%s","tool":"%s","file":"%s","stash_ref":"unknown","stash_msg":"%s","error":"%s"}\n' \
+          "${ts_iso}" \
+          "$(json_escape "${session_id}")" \
+          "$(json_escape "${tool_name}")" \
+          "$(json_escape "${abs_path}")" \
+          "$(json_escape "${stash_msg}")" \
+          "$(json_escape "${err_raw}")" \
+          >> "${jsonl_path}" 2>/dev/null
+    then
+      echo "[pre-edit-stash] cannot write JSONL log to ${jsonl_path}" >&2
+    fi
+    echo "[pre-edit-stash] git stash store failed for ${abs_path} (advisory; exit 0)" >&2
+  fi
+  rm -f "${store_err_tmp}" 2>/dev/null || true
 fi
 
 rm -f "${stash_err_tmp}" 2>/dev/null || true

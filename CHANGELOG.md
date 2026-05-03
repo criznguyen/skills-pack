@@ -8,6 +8,87 @@ public mirror. For the full upstream history see
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) ·
 versions: [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## v1.6.0 — 2026-05-04
+
+### Added
+
+- **`core/fix-root-cause/` skill** — codifies the "fix the root cause, no
+  workaround" rule. When the agent considers a workaround, the skill
+  triggers a 4-question gate; the workaround is accepted ONLY if (1)
+  there is documented time pressure AND (2) the workaround is comment-
+  tagged in source AND (3) the follow-up is tracked with an owner and
+  deadline AND (4) the reversibility plan is documented. Any NO answer
+  rejects the workaround and sends the agent back to the root-cause
+  path. Source: a real session where a sub-agent renamed a token in
+  narrative prose (typography swap on `foo.x.y`) to dodge a `grep -c`
+  verify check rather than fix the underlying scope drift; the
+  operator caught it during a hand spot-check and mandated codification
+  as a standalone skill.
+- **5 sub-principles** (each with implementation hint in `SKILL.md`):
+  1. **No typographical evasion** — never rename a token to dodge a
+     grep; fix the check or fix the underlying drift.
+  2. **No error suppression without diagnosis** — `2>/dev/null`,
+     `|| true`, `try/except: pass`, JS `.catch(() => {})` need a
+     one-line WHY comment OR a specific known-non-fatal case named.
+  3. **No scope-narrowing escape** — "I scoped to file X" is rejected
+     unless the spec explicitly authorizes the narrowing.
+  4. **No hardcoded sentinel value** — fail loudly on missing required
+     config; do not silently default to `100` / `null` / etc.
+  5. **No skipping failing tests** — `t.Skip("flaky")` rejected without
+     explicit ticket + owner + deadline.
+- **3 prompt files**:
+  - `prompts/decision-tree.md` — 4-question gate as a mermaid
+    flowchart + plain-text fallback (T5+T6 ensure both shapes ship).
+  - `prompts/anti-pattern-catalog.md` — 12 BAD-vs-GOOD code examples;
+    each entry has BAD code → GOOD code → 1-line explanation. Coverage
+    map: principle 2 (error suppression) gets 4 entries reflecting
+    operator-observed incident frequency.
+  - `prompts/workaround-template.md` — standard `// WORKAROUND:`
+    comment shape (5 required fields: WORKAROUND / Why root cause not
+    fixed / Follow-up / Reversibility / Author) + 5-question smell
+    test the operator/auditor runs before accepting any workaround.
+- **Tests** — `core/fix-root-cause/tests/test-skill-shape.sh` (9 cases,
+  all PASS): T1 SKILL.md front-matter `name:`+`description:`; T2
+  README.md non-empty; T3 all 3 prompt files exist; T4 catalog has
+  ≥12 entries (`## Entry N` count); T5 decision-tree has mermaid
+  block; T6 decision-tree has plain-text fallback section; T7
+  workaround-template has all 5 standard fields; T8 description is
+  200..900 chars; T9 SKILL.md references all 3 prompt files
+  (rename-drift guard).
+
+### Composes with
+
+- `core-config` (anti-fantasy is the sibling rule for facts; this
+  skill extends the same "verify before claim" discipline to fixes).
+- `audit` — auditor uses anti-pattern-catalog as a PE-dimension
+  checklist during cycle review.
+- `delta-code-review` — reviewer flags suppressed errors and
+  validates `// WORKAROUND:` comments against the template.
+- `governance-pack` — anti-pattern surface enumeration inherits the
+  catalog.
+
+### Backwards compatibility
+
+Pure additive — new skill directory `core/fix-root-cause/`, no hooks,
+no `settings.json` edits, no installer changes. Existing v1.5.0 /
+v1.4.x skills untouched. Adoption is `git pull` + the auto-attach
+trigger phrases in `SKILL.md` §"When to apply".
+
+### Upstream commits
+
+Mirrored from `criznguyen/claude-skills` `e5254b9` + `9e0a0b5` +
+`0b51c77` + `3e39002` (tag `v1.6.0`). Audit cycle-1 PASS, 23/23
+probes green at release.
+
+### Intentionally NOT mirrored
+
+- `docs/sdlc/spec/v1.6.0-fix-root-cause/...`,
+  `docs/sdlc/architecture/v1.6.0-fix-root-cause/...`,
+  `docs/sdlc/tech-spec/v1.6.0-fix-root-cause/...` — claude-skills
+  repo-internal SDLC artifacts.
+- `audit-report-cycle-*.md` — claude-skills repo-internal audit
+  cycle reports.
+
 ## v1.5.0 — 2026-05-04
 
 ### Added

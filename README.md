@@ -1,6 +1,6 @@
 # skills-pack
 
-Version: see [`VERSION`](VERSION) · matches the upstream `claude-skills` release tag (current: `v1.5.0`).
+Version: see [`VERSION`](VERSION) · matches the upstream `claude-skills` release tag (current: `v1.6.0`).
 
 A drop-in pack of [Claude Code](https://claude.com/claude-code) skills, hooks, and slash commands that turn the agent into a disciplined senior engineer — **type-checked tool surface, sandboxed by default, audit-gated, force-push-blocked, credential-refusing, loop-circuit-broken, postcondition-verified**.
 
@@ -183,6 +183,7 @@ Full charter: [`docs/synthesis/v1.1/charter-v1.1.md`](docs/synthesis/v1.1/charte
 
 Full history in [`CHANGELOG.md`](CHANGELOG.md).
 
+- **`v1.6.0`** (2026-05-04) — new `core/fix-root-cause/` skill: 4-question workaround gate + 12 anti-patterns + standard `// WORKAROUND:` comment template. Codifies the "fix root cause, no workaround" rule — agent must answer YES to all 4 questions (documented time pressure / comment-tagged in source / follow-up tracked with owner+deadline / reversibility plan documented) before any workaround ships. Pairs with `core-config` (anti-fantasy sibling), `audit` (catalog feeds PE-dimension checklist), `delta-code-review` (catches suppressed errors). Pure additive: new directory, no hooks, no `settings.json` edits.
 - **`v1.5.0`** (2026-05-04) — new `core/anti-ai-ux/` skill: five UX patterns (real-time progress, visible rollback, explain reasoning, consent before destructive, show data flow) the agent applies by default when generating user-facing UI for agent-driven products. Auto-attaches when both a UI-framework signal (React/Vue 3/Svelte 5/Flutter/SwiftUI) AND an AI-product signal are present. Pure additive: new directory, no hook changes, no `settings.json` edits.
 - **`v1.4.4`** (2026-05-03) — hotfix triple. `deny-prod-paths.sh` jq probe now runs `jq --version` so a broken jq symlink in PATH no longer silently bypasses the denylist (+1 test). `block-destructive.sh` adds a doc-context whitelist so `git commit -m "block rm -rf /"` and `echo`/`cat`/heredoc bodies no longer trip on their own description text — chained commands (`&&`/`;`/`|`/`||`) still scan (+5 tests). Allowlist docs gain "Pattern format" RIGHT vs WRONG examples — patterns must prefix `**/` because they match against absolute paths.
 - **`v1.4.3`** (2026-05-03) — `governance-pack` per-project allowlist. Drop `<project_root>/.claude/governance-allow.txt` (same glob format as `prod-paths.txt`) and listed paths win over the universal denylist FOR THAT PROJECT ONLY, with a JSONL audit trail at `.claude/state/governance-allow.jsonl`. Use it for surge work in protected paths (audit-remediation on `internal/auth/`, schema-redo across `db/migrations/`, billing refactor); remove the file when done. Projects without the file see zero behavior change. Example: `printf '**/internal/auth/**\n**/db/migrations/**\n' > .claude/governance-allow.txt` (note: patterns must start with `**/` per v1.4.4 docs). See [`core/governance-pack/README.md`](core/governance-pack/README.md) §"Per-project allowlist (v1.4.3+)".

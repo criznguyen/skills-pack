@@ -681,24 +681,50 @@ else
   done
   FWS_CACHE_HOOK="$FWS_HOOKS_DST/cache-mtime-on-read.sh"
   FWS_CHECK_HOOK="$FWS_HOOKS_DST/file-stat-check.sh"
-  if [ -f "$SETTINGS_DST" ] && grep -q 'file-stat-check' "$SETTINGS_DST" 2>/dev/null; then
-    log "  $SETTINGS_DST already registers file-stat-check (idempotent skip)"
-  elif [ -f "$SETTINGS_DST" ]; then
-    if [ "$DRY_RUN" -eq 1 ]; then
-      printf '[dry-run] register file-write-stale-stat-refusal hooks\n'
-    elif command -v jq >/dev/null 2>&1; then
-      BAK="$SETTINGS_DST.bak.fws.$(date +%Y%m%d-%H%M%S)"
-      cp "$SETTINGS_DST" "$BAK"
-      TMP="$(mktemp)"
-      jq --arg cache "$FWS_CACHE_HOOK" --arg check "$FWS_CHECK_HOOK" '
-        .hooks //= {}
-        | .hooks.PostToolUse //= []
-        | .hooks.PreToolUse //= []
-        | .hooks.PostToolUse += [{"matcher":"Read|Edit|Write|MultiEdit","hooks":[{"type":"command","command":$cache,"timeout":5000}]}]
-        | .hooks.PreToolUse += [{"matcher":"Edit|Write|MultiEdit","hooks":[{"type":"command","command":$check,"timeout":5000}]}]
-      ' "$SETTINGS_DST" > "$TMP" && mv "$TMP" "$SETTINGS_DST"
-      log "  registered file-write-stale-stat-refusal (backup: $BAK)"
+  # v1.7.1 root-cause fix for v1.7.0 install bug: previously this block
+  # checked only "is file-stat-check registered?" and skipped wholesale,
+  # which silently dropped any matcher widening on upgrade (e.g. v1.7.0
+  # widened cache-mtime PostToolUse matcher from "Read" to
+  # "Read|Edit|Write|MultiEdit" but installs over a v1.6.0-shaped settings
+  # never picked it up). Now: ensure BOTH entries exist AND have canonical
+  # matchers; add missing entries; rewrite stale matchers in place.
+  FWS_CACHE_MATCHER='Read|Edit|Write|MultiEdit'
+  FWS_CHECK_MATCHER='Edit|Write|MultiEdit'
+  if [ -f "$SETTINGS_DST" ] && command -v jq >/dev/null 2>&1; then
+    # Detect canonical state via jq (matcher-aware, not grep-aware).
+    CACHE_PRESENT="$(jq --arg c "$FWS_CACHE_HOOK" --arg m "$FWS_CACHE_MATCHER" \
+      '[.hooks.PostToolUse[]? | select(.hooks[]?.command == $c) | select(.matcher == $m)] | length' \
+      "$SETTINGS_DST" 2>/dev/null || echo 0)"
+    CHECK_PRESENT="$(jq --arg c "$FWS_CHECK_HOOK" --arg m "$FWS_CHECK_MATCHER" \
+      '[.hooks.PreToolUse[]? | select(.hooks[]?.command == $c) | select(.matcher == $m)] | length' \
+      "$SETTINGS_DST" 2>/dev/null || echo 0)"
+    if [ "${CACHE_PRESENT:-0}" -ge 1 ] && [ "${CHECK_PRESENT:-0}" -ge 1 ]; then
+      log "  $SETTINGS_DST already registers file-stat-check + cache-mtime with canonical matchers (idempotent skip)"
+    else
+      if [ "$DRY_RUN" -eq 1 ]; then
+        printf '[dry-run] register/canonicalize file-write-stale-stat-refusal hooks\n'
+      else
+        BAK="$SETTINGS_DST.bak.fws.$(date +%Y%m%d-%H%M%S)"
+        cp "$SETTINGS_DST" "$BAK"
+        TMP="$(mktemp)"
+        # Canonicalize: drop any prior entry referencing these two hooks
+        # (regardless of matcher), then add fresh canonical entries. This
+        # is matcher-rewrite, not duplicate-add.
+        jq --arg cache "$FWS_CACHE_HOOK" --arg check "$FWS_CHECK_HOOK" \
+           --arg cmat "$FWS_CACHE_MATCHER" --arg pmat "$FWS_CHECK_MATCHER" '
+          .hooks //= {}
+          | .hooks.PostToolUse //= []
+          | .hooks.PreToolUse  //= []
+          | .hooks.PostToolUse |= map(select((.hooks // []) | map(.command) | index($cache) | not))
+          | .hooks.PreToolUse  |= map(select((.hooks // []) | map(.command) | index($check) | not))
+          | .hooks.PostToolUse += [{"matcher":$cmat,"hooks":[{"type":"command","command":$cache,"timeout":5000}]}]
+          | .hooks.PreToolUse  += [{"matcher":$pmat,"hooks":[{"type":"command","command":$check,"timeout":5000}]}]
+        ' "$SETTINGS_DST" > "$TMP" && mv "$TMP" "$SETTINGS_DST"
+        log "  registered/canonicalized file-write-stale-stat-refusal (backup: $BAK)"
+      fi
     fi
+  elif [ -f "$SETTINGS_DST" ]; then
+    log "  WARN: jq missing — cannot canonicalize file-stat matchers; install with jq present to enable"
   fi
 fi
 
@@ -834,6 +860,77 @@ else
     fi
   else
     log "  --enable-sandbox NOT set; staged only. Re-run with --enable-sandbox to flip."
+  fi
+fi
+
+# --- 18. multi-agent-merge-discipline (v1.8.0; install § shipped in v1.9.1) -
+# Install the per-project hook globally at
+# ~/.claude/hooks/multi-agent-merge-discipline/pre-commit-strip-gen.sh and
+# register a PreToolUse(Bash) entry pointing at $HOME (NOT $CLAUDE_PROJECT_DIR).
+# The skill is opt-in per project via the presence of
+# <project>/.claude/skills/multi-agent-merge-discipline/gen-paths.txt — the
+# hook silent no-ops when the allowlist file is absent (line 80 of the script),
+# so registering it globally is safe for projects that never adopt the skill.
+#
+# Drift recovery: v1.8.0 shipped without an install § here, so the hook got
+# manually registered with command path `${CLAUDE_PROJECT_DIR}/.claude/skills/...`
+# which fails on every Bash invocation outside a project that vendored the skill
+# into .claude/skills/. Use the same matcher-aware canonicalization pattern as
+# §13 (file-write-stale-stat-refusal) — drop any prior entry referencing the
+# script (regardless of literal path) and add a fresh canonical entry.
+log "Step 18: install multi-agent-merge-discipline"
+MAMD_HOOK_SRC="$(cd "$GP_ROOT/.." && pwd)/multi-agent-merge-discipline/hooks/pre-commit-strip-gen.sh"
+MAMD_HOOKS_DST="$CLAUDE_HOME/hooks/multi-agent-merge-discipline"
+MAMD_HOOK_INSTALLED="$MAMD_HOOKS_DST/pre-commit-strip-gen.sh"
+MAMD_MATCHER='Bash'
+
+if [ ! -f "$MAMD_HOOK_SRC" ]; then
+  log "  WARN: multi-agent-merge-discipline source missing at $MAMD_HOOK_SRC — skipping"
+else
+  do_or_dry mkdir -p "$MAMD_HOOKS_DST"
+  do_or_dry cp "$MAMD_HOOK_SRC" "$MAMD_HOOK_INSTALLED"
+  do_or_dry chmod +x "$MAMD_HOOK_INSTALLED"
+
+  # Match by basename (pre-commit-strip-gen.sh) so we catch the broken
+  # ${CLAUDE_PROJECT_DIR}/.claude/skills/multi-agent-merge-discipline/hooks/...
+  # path AND any other prior literal — drift recovery is path-agnostic.
+  if [ -f "$SETTINGS_DST" ] && command -v jq >/dev/null 2>&1; then
+    PRESENT="$(jq --arg c "$MAMD_HOOK_INSTALLED" --arg m "$MAMD_MATCHER" \
+      '[.hooks.PreToolUse[]? | select(.hooks[]?.command == $c) | select(.matcher == $m)] | length' \
+      "$SETTINGS_DST" 2>/dev/null || echo 0)"
+    # Also count any drifted entries (basename match, any matcher / any path).
+    DRIFT_COUNT="$(jq '[.hooks.PreToolUse[]? | select(.hooks[]?.command | tostring | test("(^|/)pre-commit-strip-gen\\.sh$"))] | length' \
+      "$SETTINGS_DST" 2>/dev/null || echo 0)"
+    if [ "${PRESENT:-0}" -ge 1 ] && [ "${DRIFT_COUNT:-0}" -eq "${PRESENT:-0}" ]; then
+      log "  $SETTINGS_DST already registers multi-agent-merge-discipline with canonical path+matcher (idempotent skip)"
+    else
+      if [ "$DRY_RUN" -eq 1 ]; then
+        printf '[dry-run] register/canonicalize multi-agent-merge-discipline PreToolUse(Bash) hook\n'
+      else
+        BAK="$SETTINGS_DST.bak.mamd.$(date +%Y%m%d-%H%M%S)"
+        cp "$SETTINGS_DST" "$BAK"
+        TMP="$(mktemp)"
+        # Drop ANY prior entry referencing pre-commit-strip-gen.sh (covers
+        # the broken ${CLAUDE_PROJECT_DIR} literal + the canonical path),
+        # then add a fresh canonical entry. matcher-rewrite, not duplicate.
+        # Defensive: if removing the hook leaves an entry with no hooks,
+        # drop the empty entry too.
+        jq --arg cmd "$MAMD_HOOK_INSTALLED" --arg mat "$MAMD_MATCHER" '
+          .hooks //= {}
+          | .hooks.PreToolUse //= []
+          | .hooks.PreToolUse |= map(
+              .hooks |= map(select(
+                (.command | tostring | test("(^|/)pre-commit-strip-gen\\.sh$")) | not
+              ))
+            )
+          | .hooks.PreToolUse |= map(select((.hooks // []) | length > 0))
+          | .hooks.PreToolUse += [{"matcher":$mat,"hooks":[{"type":"command","command":$cmd,"timeout":5000}]}]
+        ' "$SETTINGS_DST" > "$TMP" && mv "$TMP" "$SETTINGS_DST"
+        log "  registered/canonicalized multi-agent-merge-discipline (backup: $BAK)"
+      fi
+    fi
+  elif [ -f "$SETTINGS_DST" ]; then
+    log "  WARN: jq missing — cannot canonicalize multi-agent-merge-discipline matcher; install with jq present to enable"
   fi
 fi
 

@@ -22,8 +22,14 @@ This skill ships two complementary mechanisms:
 
 ## Part A — PreToolUse hook: strip auto-generated files from sub-agent commits
 
-**File**: `hooks/pre-commit-strip-gen.sh` — wired in project's
-`.claude/settings.json` PreToolUse `Bash` matcher.
+**File**: `hooks/pre-commit-strip-gen.sh` — installed globally to
+`~/.claude/hooks/multi-agent-merge-discipline/pre-commit-strip-gen.sh`
+by `core/governance-pack/install.sh` §18 and registered as a
+PreToolUse `Bash` hook in `~/.claude/settings.json`. The hook is
+opt-in per project: it silent no-ops when the project lacks
+`<project>/.claude/skills/multi-agent-merge-discipline/gen-paths.txt`,
+so the global registration is safe for projects that never adopt the
+skill.
 
 **Logic**:
 1. Detect the tool call is `git commit` (heuristic: `command` starts with
@@ -65,7 +71,8 @@ src/generated/**
 api/types.gen.ts
 ```
 
-`.claude/settings.json` PreToolUse matcher:
+`~/.claude/settings.json` PreToolUse matcher (auto-registered by
+`core/governance-pack/install.sh` §18):
 
 ```json
 {
@@ -73,14 +80,17 @@ api/types.gen.ts
   "hooks": [
     {
       "type": "command",
-      "command": "${CLAUDE_PROJECT_DIR}/.claude/skills/multi-agent-merge-discipline/hooks/pre-commit-strip-gen.sh",
+      "command": "${HOME}/.claude/hooks/multi-agent-merge-discipline/pre-commit-strip-gen.sh",
       "timeout": 5000
     }
   ]
 }
 ```
 
-(Or symlink the skill's hook into `.claude/hooks/` and reference there.)
+The path is `${HOME}/...` (NOT `${CLAUDE_PROJECT_DIR}/...`) so the
+hook resolves on every Bash invocation regardless of cwd. Projects
+opt in by creating `gen-paths.txt`; the hook silent no-ops when the
+allowlist is absent.
 
 ## Part B — Agent handoff manifest
 
@@ -144,18 +154,22 @@ DO NOT use when:
 
 ## Adoption checklist
 
-1. `mkdir -p .claude/skills/multi-agent-merge-discipline`
-2. Copy `hooks/pre-commit-strip-gen.sh` (or symlink from this skill's
-   install location).
-3. Author `.claude/skills/multi-agent-merge-discipline/gen-paths.txt`
-   listing your project's auto-generated globs.
-4. Wire the PreToolUse `Bash` hook in `.claude/settings.json`.
-5. (Optional Part B) Author `audits/manifests/` directory.
-6. (Optional Part B) Update sub-agent prompts to emit manifest JSON
+1. **Install the global hook** — run `bash core/governance-pack/install.sh`
+   from the claude-skills checkout. §18 copies the hook to
+   `~/.claude/hooks/multi-agent-merge-discipline/pre-commit-strip-gen.sh`
+   and registers the PreToolUse(`Bash`) entry. Idempotent + drift-recovery
+   safe (rewrites legacy `${CLAUDE_PROJECT_DIR}/...` registrations).
+2. **Project opt-in** — author
+   `<project>/.claude/skills/multi-agent-merge-discipline/gen-paths.txt`
+   listing your project's auto-generated globs (one per line). The hook
+   silent no-ops on every project that lacks this file, so step 1 is
+   safe to run globally.
+3. (Optional Part B) Author `audits/manifests/` directory.
+4. (Optional Part B) Update sub-agent prompts to emit manifest JSON
    alongside their commit.
-7. (Optional Part B) Add `make merge-wave WAVE_ID=...` target wrapping
+5. (Optional Part B) Add `make merge-wave WAVE_ID=...` target wrapping
    the merge tool.
-8. Document the convention in your project's `AGENTS.md` so future
+6. Document the convention in your project's `AGENTS.md` so future
    sub-agents know to honor it.
 
 ## Risk register

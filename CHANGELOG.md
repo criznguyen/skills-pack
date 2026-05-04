@@ -8,6 +8,47 @@ public mirror. For the full upstream history see
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) ·
 versions: [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## v1.9.1 — 2026-05-04
+
+Mirrors upstream claude-skills v1.9.1 — recovery patch landing two
+missed-ships from the v1.8.0 commit. The v1.7.1 install.sh §13
+root-cause fix was documented in CHANGELOG but never committed in
+code form, and the v1.8.0 `multi-agent-merge-discipline` (MAMD)
+skill shipped without an install § so operators ended up registering
+the hook manually with a broken `${CLAUDE_PROJECT_DIR}/.claude/skills/...`
+path that errors on every Bash invocation outside the skill's project.
+
+### Fixed (v1.7.1 recovery)
+
+- **`core/governance-pack/install.sh`** §13 (`file-write-stale-stat-refusal`
+  registration) — now actually shipped on top of v1.9.0. The patch
+  replaces the substring grep with a matcher-aware jq check (detect
+  `cache-mtime-on-read` PostToolUse + `file-stat-check` PreToolUse
+  separately, compare matcher to canonical, drop stale + add fresh on
+  drift). The v1.7.1 CHANGELOG entry remains accurate; this release
+  closes the gap between documentation and code.
+
+### Added (v1.8.0 MAMD recovery)
+
+- **`core/governance-pack/install.sh`** §18 (`multi-agent-merge-discipline`
+  hook installation). Installs the hook globally to
+  `~/.claude/hooks/multi-agent-merge-discipline/pre-commit-strip-gen.sh`
+  with basename-aware drift recovery (handles legacy
+  `${CLAUDE_PROJECT_DIR}/.claude/skills/...` registrations that were
+  produced by manual installs in the v1.8.0 → v1.9.0 window).
+- **`core/multi-agent-merge-discipline/SKILL.md`** — adoption checklist
+  updated from per-project copy to global install model. Sub-agent
+  worktrees no longer need to copy the hook into each worktree's
+  `.claude/skills/`; the global hook resolves the project's
+  `gen-paths.txt` from `${CLAUDE_PROJECT_DIR}` at runtime.
+
+### Tests
+
+- 37/37 governance-pack install tests PASS (was 35; +1
+  `test-install-mamd-canonical.sh` covers §18 idempotency + drift
+  recovery, +1 `test-install-matcher-canonical.sh` covers §13
+  matcher-aware canonicalization).
+
 ## v1.9.0 — 2026-05-04
 
 Mirrors upstream claude-skills v1.9.0 — slim ADOPT carved from deferred

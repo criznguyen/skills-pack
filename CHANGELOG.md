@@ -8,6 +8,47 @@ public mirror. For the full upstream history see
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) ·
 versions: [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## v1.8.0 — 2026-05-04
+
+Mirrors upstream claude-skills v1.8.0 — two parallel-execution governance
+additions surfaced from live ciscrm Wave 4.A.2 (6 parallel Opus
+sub-agents + ~30 min × 4 sequential merges of mostly-mechanical
+conflict resolution). Both backward-compatible.
+
+### Added
+
+- **`core/multi-agent-merge-discipline`** (NEW skill) — reduces
+  orchestrator merge tax for parallel sub-agent worktrees.
+  - Part A `pre-commit-strip-gen.sh` PreToolUse `Bash` hook detects
+    `git commit` and unstages per-project allowlisted auto-generated
+    files (configurable via
+    `.claude/skills/multi-agent-merge-discipline/gen-paths.txt`).
+    Orchestrator regenerates the union post-merge → eliminates ~80%
+    of merge conflict surface (sqlc gen, ctxq, proto stubs, OpenAPI
+    clients).
+  - Part B handoff manifest convention (templates shipped) — sub-agents
+    declare structured additions in JSON for programmatic merge of
+    APPEND-ONLY shared files (RBAC, routes, wiring).
+  - 6 hook tests PASS; full SKILL.md + CLAUDE.md + README.md +
+    `gen-paths.txt.example`.
+
+### Changed
+
+- **`core/file-write-stale-stat-refusal`** v2.0 → v2.1 — adds
+  same-session-write bypass. Fixes false-positive when this session's
+  own lint/formatter (gofmt, prettier, biome, eslint) advances mtime
+  AFTER PostToolUse cache hook stamps it. Cache schema gains
+  `last_writer_session_id`; PreToolUse stat-check bypasses refusal
+  when cached session_id matches current SESSION_ID and refreshes
+  cache. Genuine cross-session drift still refuses. Legacy v2.0
+  cache (no session_id) falls through to strict refusal.
+  - 4 bypass tests PASS.
+
+### Research
+
+- **`docs/research/v1.8-ideas/`** holds the v1.8 design docs for
+  both additions (origin from live ciscrm operator session 2026-05-04).
+
 ## v1.7.0 — 2026-05-04
 
 Backlog ship — bundles 4 v2.x candidates from upstream claude-skills:

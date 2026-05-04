@@ -1,0 +1,28 @@
+# gen-paths.txt — auto-generated file allowlist for multi-agent-merge-discipline.
+#
+# Each non-comment, non-blank line is a glob pattern (bash globstar) relative
+# to repo root. Files matching these patterns are stripped from `git commit`
+# staging by the pre-commit-strip-gen.sh hook, leaving only hand-written
+# sources in the sub-agent commit. The orchestrator runs `make generate`
+# (or equivalent) after each merge to regenerate the union.
+#
+# Examples per stack (uncomment what applies):
+
+# Go + sqlc
+# internal/platform/db/gen/**
+# internal/platform/db/ctxq/ctxq_gen.go
+
+# Go + protobuf / grpc
+# pkg/api/**/*.pb.go
+# pkg/api/**/*_grpc.pb.go
+
+# TypeScript + OpenAPI codegen (orval/openapi-generator)
+# src/generated/**
+# api/types.gen.ts
+
+# Rust + tonic / prost
+# src/proto/*.rs
+
+# Python + protoc
+# generated/**/*_pb2.py
+# generated/**/*_pb2_grpc.py

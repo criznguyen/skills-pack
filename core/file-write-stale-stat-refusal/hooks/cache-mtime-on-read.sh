@@ -65,7 +65,14 @@ NOW="$(date +%s 2>/dev/null || echo 0)"
 
 ESC_PATH="${FILE_PATH//\\/\\\\}"
 ESC_PATH="${ESC_PATH//\"/\\\"}"
-printf '{"path":"%s","mtime":%s,"read_at":%s}\n' "$ESC_PATH" "${MTIME:-0}" "${NOW:-0}" \
+ESC_SID="${SESSION_ID//\\/\\\\}"
+ESC_SID="${ESC_SID//\"/\\\"}"
+# v2.1: stamp last_writer_session_id so the PreToolUse stat-check can
+# distinguish self-write drift (same session's lint/formatter touched the
+# file post-cache via PostToolUse hook chain) from genuine cross-session
+# drift. Backward compatible: missing session_id falls through to strict
+# v2.0 behavior. Source: docs/research/v1.8-ideas/file-stat-refusal-same-session-bypass.md
+printf '{"path":"%s","mtime":%s,"read_at":%s,"session_id":"%s"}\n' "$ESC_PATH" "${MTIME:-0}" "${NOW:-0}" "$ESC_SID" \
   >> "$CACHE_FILE" 2>/dev/null || true
 
 exit 0

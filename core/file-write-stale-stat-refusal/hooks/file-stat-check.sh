@@ -88,19 +88,23 @@ fi
 
 CACHED_MTIME=0
 CACHED_READ_AT=0
+CACHED_SESSION_ID=""
 if command -v python3 >/dev/null 2>&1; then
   PARSED="$(printf '%s' "$LATEST" | python3 -c '
 import json, sys
 try: d = json.loads(sys.stdin.read())
-except Exception: print("0"); print("0"); sys.exit(0)
+except Exception: print("0"); print("0"); print(""); sys.exit(0)
 print(int(d.get("mtime", 0) or 0))
 print(int(d.get("read_at", 0) or 0))
+print(d.get("session_id", "") or "")
 ' 2>/dev/null)"
   CACHED_MTIME="$(printf '%s' "$PARSED" | sed -n '1p')"
   CACHED_READ_AT="$(printf '%s' "$PARSED" | sed -n '2p')"
+  CACHED_SESSION_ID="$(printf '%s' "$PARSED" | sed -n '3p')"
 elif command -v jq >/dev/null 2>&1; then
   CACHED_MTIME="$(printf '%s' "$LATEST" | jq -r '.mtime // 0')"
   CACHED_READ_AT="$(printf '%s' "$LATEST" | jq -r '.read_at // 0')"
+  CACHED_SESSION_ID="$(printf '%s' "$LATEST" | jq -r '.session_id // ""')"
 fi
 
 CURRENT_MTIME="$(stat -c %Y "$FILE_PATH" 2>/dev/null || stat -f %m "$FILE_PATH" 2>/dev/null || echo 0)"
@@ -118,6 +122,32 @@ if [ "$SINCE_READ" -le "$COOLDOWN_SEC" ]; then
   emit_telemetry "cooldown" "$DRIFT"
   printf '[file-stat-cooldown] file=%s drift=%ss within %ss cooldown\n' \
     "$FILE_PATH" "$DRIFT" "$COOLDOWN_SEC" >&2
+  exit 0
+fi
+
+# v2.1: same-session-write bypass. The cache's last_writer_session_id is
+# stamped by cache-mtime-on-read.sh whenever THIS session interacts with
+# the file. If the drift came from this session's own lint/formatter
+# (gofmt, prettier, biome, eslint, IDE indexer running as PostToolUse
+# side effect), the session_id will match — and we bypass the refusal.
+# Real cross-session drift (e.g. another agent on a shared file) still
+# refuses. Backward compatible: cached entries without session_id field
+# fall through to strict v2.0 refusal behavior.
+# Source: docs/research/v1.8-ideas/file-stat-refusal-same-session-bypass.md
+if [ -n "$CACHED_SESSION_ID" ] && [ "$CACHED_SESSION_ID" = "$SESSION_ID" ]; then
+  # Refresh cache to current mtime so subsequent edits don't repeatedly
+  # trigger this bypass for the same drift.
+  CACHE_DIR_FOR_REFRESH="$HOME_DIR/.claude/sessions/$SESSION_ID"
+  ESC_PATH="${FILE_PATH//\\/\\\\}"
+  ESC_PATH="${ESC_PATH//\"/\\\"}"
+  ESC_SID="${SESSION_ID//\\/\\\\}"
+  ESC_SID="${ESC_SID//\"/\\\"}"
+  printf '{"path":"%s","mtime":%s,"read_at":%s,"session_id":"%s"}\n' \
+    "$ESC_PATH" "${CURRENT_MTIME:-0}" "${NOW:-0}" "$ESC_SID" \
+    >> "$CACHE_DIR_FOR_REFRESH/file-stat.cache" 2>/dev/null || true
+  emit_telemetry "same-session-bypass" "$DRIFT"
+  printf '[file-stat-same-session-bypass] file=%s drift=%ss — same-session lint/formatter detected, cache refreshed\n' \
+    "$FILE_PATH" "$DRIFT" >&2
   exit 0
 fi
 

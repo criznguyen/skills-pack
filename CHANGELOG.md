@@ -8,6 +8,43 @@ public mirror. For the full upstream history see
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) ·
 versions: [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## v1.9.0 — 2026-05-04
+
+Mirrors upstream claude-skills v1.9.0 — slim ADOPT carved from deferred
+full-shape live-discussion-skill proposal. Ships peer-discussion-budgeted
+as the smallest addressable slice that earns telemetry toward whether
+the deferred pieces (binding contract, LLM judge, operator escalation,
+`teamwork` task class) are ever needed.
+
+### Added
+
+- **`core/peer-discussion-budgeted`** (NEW skill) — convention + hooks
+  for sub-agent-to-sub-agent discussion threads via existing
+  `claude-peers` MCP, with hard budget caps + auto-record.
+  - **Convention**: peer messages whose first line matches
+    `[discussion: <topic-slug>] <subject>` opt into budget tracking +
+    auto-record. Untagged messages = casual peer chat (no behavior
+    change).
+  - **`hooks/budget-gate.sh`** PreToolUse on send_message enforces
+    `PEER_DISCUSSION_MAX_TOPICS=5` × `PEER_DISCUSSION_MAX_ROUND_TRIPS=3`.
+    Refusal at exit 2 with stderr advisory directing the agent to
+    read existing record and decide unilaterally. Bypass:
+    `PEER_DISCUSSION_BUDGETED_DISABLE=1`.
+  - **`hooks/discussion-recorder.sh`** PostToolUse auto-appends
+    each tagged message to `audits/discussions/<topic-slug>.md` +
+    1-line ledger entry per topic (idempotent via content-hash).
+  - 10 budget-gate tests PASS.
+  - Origin: live ciscrm Wave 4.A.2 retrospective cross-domain
+    coordination cases.
+
+### Notes
+
+- Advisory-only by design. Backward-compatible: untagged peer
+  messages behave identically to pre-v1.9.0 (no opt-in friction).
+- Telemetry: `opened` / `round-trip` / `halt-topic-cap` /
+  `halt-session-cap` / `recorded` events emitted to
+  governance-pack telemetry stream for v2-decision data.
+
 ## v1.8.0 — 2026-05-04
 
 Mirrors upstream claude-skills v1.8.0 — two parallel-execution governance

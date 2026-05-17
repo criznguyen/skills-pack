@@ -1,6 +1,9 @@
 ---
 name: anti-ai-ux
 description: Apply anti-AI UX patterns when generating user-facing UI for agent-driven products. Five principles — real-time progress, visible rollback, explain reasoning, consent before destructive ops, show data flow — codified for React, Vue 3, Svelte, Flutter, and SwiftUI projects. TRIGGER when generating UI components, screens, or flows in a project that imports `react`/`react-dom`/`vue`/`svelte`/`flutter`/`SwiftUI` AND the user mentions AI / chatbot / agent / Claude / assistant / autopilot / copilot / agentic UX. SKIP for backend code, internal CLI tooling, headless agents, or static marketing pages.
+paths: ["**/*.tsx", "**/*.jsx", "**/*.vue", "**/*.svelte", "**/*.dart", "**/*.swift"]
+when_to_use: Authoring or reviewing user-facing UI for an AI/agent-driven product where transparency, rollback, and consent patterns matter.
+argument-hint: <ui-component-or-flow>
 type: ux-conventions
 tools: Read, Grep, Glob
 model: opus

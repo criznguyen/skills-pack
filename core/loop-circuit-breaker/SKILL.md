@@ -1,6 +1,9 @@
 ---
 name: loop-circuit-breaker
 description: Per-session circuit breaker. v1.7.0 splits the iteration counter into read-class (Read/Glob/Grep — default ceiling 600) and write-class (every other tool — default ceiling 150) to stop saturating on legitimate exploration work; cost (USD via CQR price table; SHA-pinned per F11) and tool-call hash collisions (3 in rolling 10-call window) keep the original semantics. Halts via stderr `[LOOP-CIRCUIT-BREAKER] halted ...` + JSONL telemetry. Bypass via orchestrator-issued `LOOP_BREAKER_BYPASS_TOKEN` env-var. v2.0 Top-5 #3, charter §2.2 sub-clause.
+paths: []
+when_to_use: Background PreToolUse counter — fires automatically per tool call to halt runaway loops; never invoked directly by the user.
+disable-model-invocation: true
 type: governance
 tools: Bash, Read, Edit, Write
 model: opus

@@ -8,6 +8,51 @@ public mirror. For the full upstream history see
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) ·
 versions: [SemVer](https://semver.org/spec/v2.0.0.html).
 
+## v1.10.0 — 2026-05-18
+
+Mirror of claude-skills v1.10.0 (upstream commit `1952ea8`, tag `v1.10.0`).
+Harness-native enforcement mini-wave surfaced from comparison with the
+shanraisshan/claude-code-best-practice repo. Replaces prompt-only governance
+with first-party harness primitives where possible.
+
+### Added
+
+- **`core/coauthor-attribution-strip`** (NEW skill) — installs canonical
+  `attribution.commit = ""` field into `~/.claude/settings.json` so the
+  harness itself strips Anthropic/Claude trailers from generated commit
+  messages. Idempotent install + matcher-aware drift recovery (jq-based,
+  same pattern as governance-pack §13/§18). Project opt-out via
+  `COAUTHOR_ATTRIBUTION_STRIP_DISABLE=1`. 7-case TMPHOME-isolated test.
+- **`initialPrompt:` frontmatter** on `core/audit/SKILL.md` and
+  `core/delta-code-review/SKILL.md` — injects PARANOIA-BUST PREAMBLE
+  on every sub-agent invocation. Codifies the paranoia-break rule at
+  the harness layer instead of via main-agent prompt boilerplate.
+- **Frontmatter enrichment** on 13 core skill SKILL.md files — adds
+  `paths:`, `when_to_use:`, `argument-hint:`, and where appropriate
+  `disable-model-invocation: true` for background-knowledge skills
+  (governance-pack-class hooks that fire automatically, not user-callable).
+  Reduces wrong-skill activation noise + improves `/skills` autocomplete UX.
+
+### Changed
+
+- **`core/git-force-push-gate/hooks/git-push-gate.sh`** — pre-push refusal
+  on commits whose body contains a `co-authored-by` trailer matching
+  Claude / `@anthropic.com` email shape. Bypass via
+  `GIT_FORCE_PUSH_GATE_ALLOW_CLAUDE_TRAILER=1`. 9-case test added.
+- **`core/git-force-push-gate/tests/test-no-claude-spawn.sh`** — tightened
+  TM4/NG6 regex from coarse `anthropic\.` to precise SDK invocation
+  patterns (`anthropic.api/client/messages/Anthropic/...`, `@anthropic-ai/`,
+  `from anthropic import`, `import anthropic`). Was firing on bare
+  `anthropic.com` email-domain references inside the new trailer detection
+  regex.
+
+### Origin
+
+shanraisshan/claude-code-best-practice repo comparison. Internal artifacts
+(`audits/`, `docs/decisions/`, `docs/research/`) are NOT mirrored — see
+upstream [`claude-skills` CHANGELOG](https://github.com/criznguyen/claude-skills/blob/main/CHANGELOG.md)
+for full v1.10.0 history.
+
 ## v1.9.1 — 2026-05-04
 
 Mirrors upstream claude-skills v1.9.1 — recovery patch landing two

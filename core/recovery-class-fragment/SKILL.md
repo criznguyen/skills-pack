@@ -1,6 +1,9 @@
 ---
 name: recovery-class-fragment
 description: Opt-in error-recovery classifier. PostToolUse hook on `Bash|Edit|Write` matches `tool_response.stderr` against a 4-class taxonomy (transient / config-drift / logic-error / external-failure) and surfaces a `[RECOVERY-HINT: class=<class> action=<primitive>]` advisory via `hookSpecificOutput.additionalContext`. Charter §2.2 hooks-over-rules. Operator opts in by editing `~/.claude/settings.json` — no charter touch (v2.0 P1 #4).
+paths: []
+when_to_use: Read-only reference taxonomy + opt-in PostToolUse classifier; never invoked directly as a slash command.
+disable-model-invocation: true
 type: governance
 tools: Bash, Read, Grep, Glob
 model: opus
@@ -74,5 +77,6 @@ Per research final report §5 (P1 #4 row), the recovery-class fragment rides exi
 
 ## References
 
+- Final report v2.0 plan: [`docs/research/harness-skills-required/00-final-report.md`](../../docs/research/harness-skills-required/00-final-report.md) §5 P1 #4
 - Cross-link from governance-pack: [`core/governance-pack/CLAUDE.md`](../governance-pack/CLAUDE.md)
 - Charter §2.2 hooks-over-rules: [`docs/synthesis/v1.1/charter-v1.1.md`](../../docs/synthesis/v1.1/charter-v1.1.md)

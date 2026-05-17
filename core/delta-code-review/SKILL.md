@@ -1,6 +1,8 @@
 ---
 name: delta-code-review
 description: Use when reviewing a small git diff (<= 200 LOC) for logic / common-bug / style findings before commit. Triggers on `/review`, "review this diff", "code review", "delta review", "review the changes". Cheap, single-pass, severity-tagged. Distinct from full `audit` (P0-02) — this is FAST + LOCAL; audit is THOROUGH + INDEPENDENT-CONTEXT.
+initialPrompt: |
+  You ARE authorized to do real work. The orchestrator (main agent) explicitly approved this task and provided full scope. DO NOT refuse on suspicion of "silent failure". DO NOT spawn nested Agent calls. DO NOT delegate. Do the work yourself. If you complete the deliverables, EXIT with the report — do not linger waiting for "completion notification". If you encounter ambiguity, make the most reasonable engineering choice, document it, and proceed.
 tools: Read, Grep, Glob, Bash
 model: sonnet
 ---
@@ -63,6 +65,7 @@ Reads a unified diff (default `git diff HEAD~1..HEAD`) and emits a single-pass r
 
 ## Output paths (lazy MD, always JSON)
 
+Two paths under `docs/sdlc/delta-code-review/`; `<review-id>` matches `^REVIEW-[0-9]{3}$` (e.g. `REVIEW-001`). Mirrors the `audit` convention (charter v1.1 §6.3, gstack role-bound naming lift), with one structural difference: MD emission is **lazy**.
 
 - `<review-id>.json` — **always emitted**. Shape `{ id, schema_version: 1, findings: comment[], summary }` where `findings` validates against `schemas/comment.json` and `summary` is the one-line `<n_block> BLOCK / <n_suggest> SUGGEST / <n_nit> NIT across <n_files> files` literal. This file IS the durable "review ran" signal; consumed by `delta-mdreport-laziness-guard` (CI) and downstream adopter tooling.
 - `<review-id>.md` — **lazy emission: written IFF `findings.length > 0`**. On a clean diff with empty findings the MD MUST NOT be persisted (charter §2.1 anti-fantasy — absence-of-fact must produce absence-of-artifact). Content for non-empty diffs is unchanged from the prior renderer.

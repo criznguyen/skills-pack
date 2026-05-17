@@ -1,6 +1,9 @@
 ---
 name: peer-discussion-budgeted
 description: Slim convention skill for sub-agent-to-sub-agent live discussion via the existing `claude-peers` MCP, with hard budget caps to prevent recursive-discussion tarpits. Sub-agents opt-in by prefixing messages with `[discussion: <topic-slug>] <subject>\n<body>`. PreToolUse hook caps total topics per session (default 5) and round-trips per topic (default 3); PostToolUse hook auto-appends each tagged message to `audits/discussions/<topic-slug>.md` plus 1-line entry in `audits/VERIFICATION-LEDGER.md`. Untagged peer messages (casual coordination) are not counted or recorded. Advisory output only — no binding contract, no rebroadcast, no operator escalation in v1.9. Slim variant of the deferred full-shape proposal `docs/decisions/2026-05-04-live-discussion-skill.md`.
+paths: []
+when_to_use: Auto-fires via budget-gate hook on tagged `[discussion: <topic>]` peer messages; never invoked directly as a slash command.
+disable-model-invocation: true
 type: governance
 tools: mcp__claude-peers__send_message, mcp__claude-peers__check_messages
 model: opus

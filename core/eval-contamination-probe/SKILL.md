@@ -1,6 +1,9 @@
 ---
 name: eval-contamination-probe
 description: Promptfoo case template + self-test that catches eval contamination. Each evaluation case carries a unique probe ID (`PROBE-<sha8>-<feature>-<idx>`); if the evaluation input contains the literal reference solution (`${PROBE_ID}_REFERENCE_SOLUTION:`) verbatim, the test FAILS — proof of contamination. Charter §7 SLO list +1 line. v2.0 P1 #5.
+paths: ["**/tasks.yaml", "**/golden-tasks/**", "**/evals/**", "**/promptfoo*"]
+when_to_use: Authoring a Promptfoo `tasks.yaml`, golden eval suite, or any automated LLM evaluation where contamination would silently false-PASS the run.
+argument-hint: <eval-case-or-feature-slug>
 type: governance
 tools: Read, Bash
 model: opus
@@ -14,6 +17,7 @@ Charter §7 names verifiability the highest-leverage governance input. The "70%-
 
 ## When to use
 
+Every Promptfoo `tasks.yaml` shipped under `tests/golden-tasks/<NN>-<feature>/`. The case template includes a per-case `PROBE-<sha8>-<feature>-<idx>` ID and an `assert: not-contains` against the literal `${PROBE_ID}_REFERENCE_SOLUTION:` substring.
 
 ## When NOT to use
 
@@ -67,6 +71,7 @@ This single line is the only charter touch for E.5.
 
 ## References
 
+- Final report v2.0 plan: [`docs/research/harness-skills-required/00-final-report.md`](../../docs/research/harness-skills-required/00-final-report.md) §5 P1 #5
 - Charter §7 SLO list: [`docs/synthesis/v1.1/charter-v1.1.md`](../../docs/synthesis/v1.1/charter-v1.1.md)
 - Hamel Husain's binary-pass-fail discipline: <https://hamel.dev/blog/posts/field-guide/>
 - Eugene Yan's anti-pattern note on generic benchmarks: <https://eugeneyan.com/writing/llm-patterns/>

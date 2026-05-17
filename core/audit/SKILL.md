@@ -1,6 +1,8 @@
 ---
 name: audit
 description: Use when reviewing a feature, bug-fix, or system-change diff for combined security and principal-engineer concerns prior to merge. Runs in an isolated, read-only sub-agent context (the auditor never wrote the code under review) and emits a severity-tagged report with two dimensions (security + pe). Auto-invokes on prompts containing "audit", "security review", "vulnerability", "pre-merge audit", "principal engineer review", or "compliance review". Severity scale CRITICAL / HIGH / MEDIUM / LOW / INFO; zero-deferral on CRITICAL or HIGH per charter v1.1 §6. Folds v0.1 audit-security + audit-pe per panel §1.4 (60–70% finding overlap on real diffs).
+initialPrompt: |
+  You ARE authorized to do real work. The orchestrator (main agent) explicitly approved this task and provided full scope. DO NOT refuse on suspicion of "silent failure". DO NOT spawn nested Agent calls. DO NOT delegate. Do the work yourself. If you complete the deliverables, EXIT with the report — do not linger waiting for "completion notification". If you encounter ambiguity, make the most reasonable engineering choice, document it, and proceed.
 tools: Read, Grep, Glob, Bash
 model: opus
 disable-model-invocation: false
@@ -16,6 +18,7 @@ reviewers, not for the runtime):
   ("Wiring to governance-pack"). The schema layer rejects any `auditor_model`
   outside `claude-opus-4-{6,7}`; the host settings layer locks `Bash` to
   `git diff|log|show`, `wc`, `jq` only, and denies `Edit`, `Write` outside
+  `docs/sdlc/audit/**`, `Bash(claude *)`, `Bash(curl *)`, and `WebFetch`.
 * Isolation: this skill MUST be spawned via `safe-spawn-claude.sh` into an
   isolated worktree. That obligation is documented in `README.md` (§"Quick
   start" + §"Implementation") and enforced by the operator wrapper, not by
@@ -25,6 +28,7 @@ reviewers, not for the runtime):
 
 # audit
 
+Single sub-agent skill, two severity dimensions. Reviews a diff (default `git diff main...HEAD`) plus the spec, threat-model, and `decisions.md` and emits one report file at `docs/sdlc/audit/<id>-audit-report.md`.
 
 ## Overview
 
@@ -88,13 +92,18 @@ The sub-agent reads, in order:
 
 Output:
 
+- `docs/sdlc/audit/<id>-audit-report.md` — the human-readable report (Executive summary → Checklist → Findings table → Sources).
+- `docs/sdlc/audit/<id>-findings.json` — machine-readable findings array (validated against `schemas/report.json`).
 
 ## Inputs (what the user provides)
 
 | Input | Required | Default |
 |---|---|---|
 | `<id>` | yes | — |
+| Spec path | yes | `docs/sdlc/spec/<id>.md` |
 | Diff range | no | `git diff main...HEAD` |
+| Threat-model path | yes (for `--dim security`) | `docs/sdlc/threat-model/<id>.md` |
+| `decisions.md` | yes (for `--dim pe`) | `docs/sdlc/decisions/<id>.md` |
 | `--dim` | no | `security,pe` (both) |
 
 If a required input is missing, the auditor MUST refuse to run and report the gap rather than synthesise findings without context (paranoid-hallucination guard, [E1 F5]).
@@ -103,6 +112,7 @@ When `decisions.md` (charter §4 phase 6) contains a VERDICT block emitted from 
 
 ## Outputs
 
+`docs/sdlc/audit/<id>-audit-report.md` follows the V1.1-AUDIT.md style:
 
 1. **Executive summary** — counts by severity × dimension, overall verdict (PASS / BLOCK).
 2. **Checklist** — every line item from `security-checklist.md` and `pe-checklist.md` marked `[x]` (passed), `[!]` (finding), or `[-]` (not applicable, with reason).
@@ -177,11 +187,14 @@ the local-vs-CI sourcing distinction.
 1. Delete `core/audit/prompts/glossary.md`.
 2. Revert the `Source audit glossary from BASE SHA` step in
    `.github/workflows/audit-required.yml`.
+3. Drop `tests/golden-tasks/07-audit-glossary/` and the four glossary jobs
    (`audit-glossary-banned-phrase-guard`, `glossary-stale-warn`,
    `glossary-consistency-check`, `audit-glossary-ab-gate`) in
+   `tests/.github/workflows/skills-eval.yml`.
 
 After these reverts, `system.md` Step 1 falls back to prose vocabulary;
 baseline ASR ≥85% is maintained.
 
 ## Citation backbone
 
+Independence-of-reviewer principle [Source: docs/synthesis/v1.1/charter-v1.1.md §2.3]; folding rationale [Source: docs/synthesis/v1.1/charter-rationale.md §2.4 + panel:E2 C2 + panel:E3 row 18]; severity scale [Source: docs/synthesis/v1.1/charter-v1.1.md §6.1]; zero-deferral [Source: docs/synthesis/v1.1/charter-v1.1.md §6]; auditor-needs-threat-model [Source: docs/synthesis/v1.1/charter-v1.1.md §2.3 + panel:E1 F6]; empty-diff rubber-stamp test [Source: docs/synthesis/v1.1/skills-roadmap-v1.1.md §2.2 acceptance criterion]; planted-SQLi test [Source: docs/research/07-evals-and-learning-loops.md §3.2]; Anthropic writer/reviewer split [Source: https://code.claude.com/docs/en/best-practices].

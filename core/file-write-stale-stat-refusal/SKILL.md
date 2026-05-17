@@ -1,6 +1,9 @@
 ---
 name: file-write-stale-stat-refusal
 description: PreToolUse hook (matcher Edit|Write|MultiEdit) refusing writes when the target file's mtime drifted since the agent last Read it. v1.7.0 — companion PostToolUse hook now matches Read|Edit|Write|MultiEdit so consecutive same-agent Edits no longer false-positive (cache mtime advances after every own-write). 5-second race-condition cooldown documented. Hard-block exit 2 with stderr advisory ("file was modified by another process since you last Read it; re-read before editing"). v2.0 P1 #3.
+paths: []
+when_to_use: Background hook — fires automatically on Edit/Write/MultiEdit; never invoked directly by the user.
+disable-model-invocation: true
 type: governance
 tools: Edit, Write, MultiEdit, Read
 model: opus

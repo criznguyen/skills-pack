@@ -89,13 +89,14 @@ fi
 # `mv` or `cp` or a heredoc that creates the destination. Fires on
 # every branch (analogous to --no-verify).
 REASON=""
+IS_PUSH=0
 if command -v python3 >/dev/null 2>&1; then
-  REASON="$(printf '%s' "$TOOL_COMMAND" | python3 -c '
+  PARSED2="$(printf '%s' "$TOOL_COMMAND" | python3 -c '
 import shlex, sys
 try:
     toks = shlex.split(sys.stdin.read())
 except ValueError:
-    sys.exit(0)
+    print(""); print("0"); sys.exit(0)
 # shlex does not split on shell-meta operators (;, &&, ||, |); these
 # arrive as their own literal tokens. Chunk the argv so each `git`
 # invocation is inspected in isolation.
@@ -105,6 +106,8 @@ for t in toks:
         chunks.append([])
     else:
         chunks[-1].append(t)
+reason = ""
+is_push = 0
 for c in chunks:
     if len(c) < 2:
         continue
@@ -121,27 +124,33 @@ for c in chunks:
         # Tighten: commit-msg must be inside a .git/hooks/ path, not a bare word.
         has_commitmsg = any(".git/hooks/commit-msg" in t for t in c[1:])
         if has_precommit and has_commitmsg:
-            print("hook_rename"); sys.exit(0)
+            reason = "hook_rename"; break
     if c[0] != "git":
         continue
     sub = c[1]
     rest = c[2:]
     if sub == "push":
+        is_push = 1
         if "--force" in rest or "--force-with-lease" in rest or "-f" in rest:
-            print("force_push"); sys.exit(0)
+            reason = "force_push"; break
         if "--no-verify" in rest:
-            print("no_verify"); sys.exit(0)
+            reason = "no_verify"; break
     elif sub == "commit":
         if "--no-verify" in rest:
-            print("no_verify"); sys.exit(0)
+            reason = "no_verify"; break
     elif sub == "mv":
         # `git mv .git/hooks/pre-commit .git/hooks/commit-msg` — same
         # evasion via the porcelain wrapper. Inspect rest for both literals.
         has_precommit = any(".git/hooks/pre-commit" in t for t in rest)
         has_commitmsg = any(".git/hooks/commit-msg" in t for t in rest)
         if has_precommit and has_commitmsg:
-            print("hook_rename"); sys.exit(0)
+            reason = "hook_rename"; break
+print(reason)
+print(is_push)
 ' 2>/dev/null)"
+  REASON="$(printf '%s' "$PARSED2" | sed -n '1p')"
+  IS_PUSH="$(printf '%s' "$PARSED2" | sed -n '2p')"
+  IS_PUSH="${IS_PUSH:-0}"
 else
   # bash fallback. Syntax-check a copy via `bash -n` first so an
   # unbalanced-quote `$TOOL_COMMAND` cannot break out of the eval.
@@ -187,6 +196,9 @@ else
               if [ "$SUB" = "mv" ]; then
                 MOVER_SEEN=1; MOVER_HAS_PC=0; MOVER_HAS_CM=0
               fi
+              if [ "$SUB" = "push" ]; then
+                IS_PUSH=1
+              fi
             elif [ "$GIT_SEEN" -eq 1 ] && [ "$SUB" = "push" ]; then
               case "$1" in
                 --force|--force-with-lease|-f) REASON="force_push"; break ;;
@@ -205,6 +217,61 @@ else
   fi
 fi
 
+# --- 2b. v1.10.0 Co-Authored-By trailer pre-push refusal -----------------
+# When the command is a `git push` and no other refusal reason has fired,
+# inspect the commits about to be pushed for `Co-Authored-By:` trailers
+# referencing Anthropic / Claude. The presence of such a trailer is a
+# violation of the operator-standing rule (feedback_no_claude_coauthor) +
+# the harness-native attribution.commit field; refusing the push prevents
+# the trailer from reaching the remote where it cannot be silently rewritten.
+#
+# Bypass: GIT_FORCE_PUSH_GATE_ALLOW_CLAUDE_TRAILER={1|true|yes}.
+#
+# Detection: walk `git log --format=%B <upstream>..HEAD` if an upstream
+# is configured; otherwise walk the full HEAD log capped at 50 commits
+# (so a fresh repo with no upstream still gets sensible coverage). If
+# either git invocation fails (no repo, no commits, etc.) we treat it
+# as "nothing to scan" and silently allow — fail-open for infra issues
+# is consistent with the rest of this hook (line 8: "Infra failure →
+# exit 0").
+#
+# Pattern is loose enough to catch variants:
+#   Co-Authored-By: Claude <noreply@anthropic.com>
+#   co-authored-by: Claude Opus 4.x <...@anthropic.com>
+#   Co-authored-by: claude-code@anthropic.com
+# but rejects bare "claude" tokens elsewhere in the message body. Tight
+# regex: a `co-authored-by:` trailer line whose value half names Claude
+# OR carries an anthropic.com email — same shape as the existing
+# core/governance-pack/hooks/no-coauthor-trailer.sh.
+if [ -z "$REASON" ] && [ "${IS_PUSH:-0}" = "1" ]; then
+  case "${GIT_FORCE_PUSH_GATE_ALLOW_CLAUDE_TRAILER:-0}" in
+    1|true|TRUE|yes|YES) ;;
+    *)
+      SCAN_CWD="$TOOL_CWD"
+      [ -n "$SCAN_CWD" ] || SCAN_CWD="$PWD"
+      if [ -d "$SCAN_CWD" ]; then
+        # Prefer @{upstream}..HEAD; fall back to HEAD~50..HEAD if no
+        # upstream is configured.
+        SCAN_LOG=""
+        SCAN_LOG="$(cd "$SCAN_CWD" 2>/dev/null && \
+          git log --format='%B%x00' '@{upstream}..HEAD' 2>/dev/null)"
+        if [ -z "$SCAN_LOG" ]; then
+          SCAN_LOG="$(cd "$SCAN_CWD" 2>/dev/null && \
+            git log -n 50 --format='%B%x00' HEAD 2>/dev/null)"
+        fi
+        if [ -n "$SCAN_LOG" ]; then
+          if printf '%s' "$SCAN_LOG" | \
+             grep -qiE 'co-authored-by:[[:space:]]*[^<\n]*claude([^<\n]*<|@)' \
+             || printf '%s' "$SCAN_LOG" | \
+             grep -qiE 'co-authored-by:[[:space:]]*[^<\n]*<[^>]*anthropic\.com>'; then
+            REASON="coauthor_trailer"
+          fi
+        fi
+      fi
+      ;;
+  esac
+fi
+
 [ -n "$REASON" ] || exit 0
 
 # --- 3. Resolve current branch -------------------------------------------
@@ -220,11 +287,14 @@ fi
 # --- 4. Determine if branch is protected ---------------------------------
 IS_PROTECTED=0
 case "$REASON" in
-  no_verify|hook_rename)
+  no_verify|hook_rename|coauthor_trailer)
     # --no-verify and pre-commit→commit-msg rename evasion are forbidden
     # on every branch by design — both disable the hook chain we depend on
     # for safety. v1.7.0 added hook_rename per
     # project_claude_skills_v2_0_shipped.md v2.2 candidate.
+    # v1.10.0 added coauthor_trailer: pushing a commit that carries the
+    # Anthropic / Claude trailer to ANY remote / branch is forbidden by
+    # operator-standing rule (feedback_no_claude_coauthor).
     IS_PROTECTED=1
     ;;
   force_push)
@@ -303,6 +373,9 @@ case "$REASON" in
     ;;
   hook_rename)
     printf 'Bypass options: (1) export GIT_FORCE_PUSH_BYPASS_TOKEN=... (2) export GIT_FORCE_PUSH_GATE_DISABLE=1 — note: renaming .git/hooks/pre-commit to .git/hooks/commit-msg disables pre-commit verification (--no-verify equivalent) and is forbidden on every branch by design (v1.7.0)\n' >&2
+    ;;
+  coauthor_trailer)
+    printf 'Bypass options: (1) export GIT_FORCE_PUSH_GATE_ALLOW_CLAUDE_TRAILER=1 (2) export GIT_FORCE_PUSH_GATE_DISABLE=1 — but the canonical fix is to amend the offending commit(s) and remove the `Co-Authored-By: Claude` / Anthropic trailer per operator-standing rule (feedback_no_claude_coauthor). v1.10.0 mini-wave addition.\n' >&2
     ;;
 esac
 exit 2

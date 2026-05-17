@@ -1,6 +1,9 @@
 ---
 name: typed-tool-surface
 description: Convention + PreToolUse(`*`) validator. Each SKILL.md declares `blast_radius:` ∈ {read-only, local-write, repo-write, network-write, external-side-effect} and `args_schema:` (relative path or inline JSON Schema). The schema-validate hook reads frontmatter at session start, caches to `~/.claude/sessions/<sid>/skill-schemas.json`, and validates `tool_input` per call via jq (or python jsonschema fallback). Failure → advisory or exit 2 (configurable per-skill). v2.0 Top-5 #4, charter §2.2 mechanism.
+paths: []
+when_to_use: Read-only reference for skill-author frontmatter conventions (`blast_radius`, `args_schema`); never invoked directly as a slash command.
+disable-model-invocation: true
 type: governance
 schema_version: "2.0"
 tools: Read, Bash
@@ -84,5 +87,6 @@ The bulk-convert of 22 v1.1.6 FULL-coverage skills is deferred to a follow-up PR
 
 ## References
 
+- Final report v2.0 plan: [`docs/research/harness-skills-required/00-final-report.md`](../../docs/research/harness-skills-required/00-final-report.md) §4 Top-5 #4
 - Charter §2.2 mechanism: [`docs/synthesis/v1.1/charter-v1.1.md`](../../docs/synthesis/v1.1/charter-v1.1.md)
 - jq (MIT/BSD) — JSON Schema validation library: <https://github.com/stedolan/jq>

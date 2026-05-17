@@ -1,6 +1,9 @@
 ---
 name: sandbox-default-on
 description: `governance-pack/install.sh --enable-sandbox` flag flips operator's `~/.claude/settings.json` `defaultMode: "sandbox"`. Per-skill opt-out via SKILL.md frontmatter `sandbox_required: false`. Documented rollback recipe at `templates/sandbox-rollback.md`. Configuration-only — no runtime hook (the Anthropic sandbox runtime does the enforcing). v2.0 Top-5 #5, charter §2.2 example list + §2.4-bis tracker entry (i).
+paths: []
+when_to_use: Advisory rule documenting sandbox-mode behavior and opt-out frontmatter convention; never invoked directly as a slash command.
+disable-model-invocation: true
 type: governance
 tools: Read, Bash
 model: opus
@@ -76,6 +79,7 @@ The install-flag emits a single line on flip:
 
 ## References
 
+- Final report v2.0 plan: [`docs/research/harness-skills-required/00-final-report.md`](../../docs/research/harness-skills-required/00-final-report.md) §4 Top-5 #5
 - Charter §2.2 example list + §2.4-bis tracker entry (i): [`docs/synthesis/v1.1/charter-v1.1.md`](../../docs/synthesis/v1.1/charter-v1.1.md)
 - Anthropic Claude Code sandbox runtime (2025-10-19; vendor-released, configuration-only).
 - Rollback recipe: [`templates/sandbox-rollback.md`](./templates/sandbox-rollback.md)

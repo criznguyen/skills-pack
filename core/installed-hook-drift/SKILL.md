@@ -1,6 +1,9 @@
 ---
 name: installed-hook-drift
 description: Reporter that compares each installed hook in `~/.claude/hooks/<group>/<hook>.sh` against the canonical version in `<repo>/core/<group>/hooks/<hook>.sh` of the claude-skills source tree. Flags drift (sha256 mismatch) and orphans (installed hook with no canonical counterpart). Output is JSONL on stdout; exit 0 always (this is a reporter, not a gate). Useful as a sanity check before filing "skill is broken" issues — local drift is a common cause of unexplained skill behavior. v1.7.0 closes the v2.2 candidate from project_claude_skills_v2_0_shipped.md.
+paths: []
+when_to_use: Background drift detector for installed hooks; surfaces sha256 mismatches between `~/.claude/hooks/` and the canonical tree.
+disable-model-invocation: true
 type: governance
 tools: Bash, Read, Grep
 model: opus

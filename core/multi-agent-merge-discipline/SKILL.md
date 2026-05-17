@@ -1,6 +1,9 @@
 ---
 name: multi-agent-merge-discipline
 description: Reduces orchestrator merge tax when N parallel sub-agents work in worktrees from a shared base. Two parts — (A) PreToolUse hook on `Bash` matching `git commit` strips per-project allowlisted auto-generated files (sqlc/ctxq/protobuf/etc.) from staging so orchestrator regenerates the union post-merge instead of resolving textual conflicts on derivable artifacts; (B) optional handoff-manifest convention so sub-agents declare structured additions (rbac perms, route mounts, struct fields, imports) in machine-readable JSON for programmatic merge of APPEND-ONLY shared files. Surfaces from ciscrm Wave 4.A.2 retro where 6 parallel agents produced ~30 min × 4 sequential merges of mostly-mechanical conflict resolution.
+paths: []
+when_to_use: Project-opt-in convention via `.claude/skills/multi-agent-merge-discipline/gen-paths.txt`; hook fires on `git commit` in repos that have configured it.
+disable-model-invocation: true
 type: governance
 tools: Bash, Edit, Write
 model: opus

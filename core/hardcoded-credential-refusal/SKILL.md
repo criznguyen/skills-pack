@@ -1,6 +1,9 @@
 ---
 name: hardcoded-credential-refusal
 description: PreToolUse hook (matcher Edit|Write|MultiEdit) refusing writes that introduce high-entropy credential patterns (AWS access key, GitHub PAT, Stripe sk_live, OpenAI sk-, Slack xoxb-, JWT, RSA private-key blocks, generic high-entropy strings) without a `// gitleaks:allow` marker comment within ±3 lines. Hard-block exit 2 with stderr advisory. Regex bank derived from gitleaks (MIT). v2.0 P1 #2.
+paths: []
+when_to_use: Background hook — fires automatically on Edit/Write/MultiEdit; never invoked directly by the user.
+disable-model-invocation: true
 type: governance
 tools: Edit, Write, MultiEdit
 model: opus
@@ -73,4 +76,5 @@ rm -rf ~/.claude/hardcoded-credential-refusal
 ## References
 
 - gitleaks (MIT): <https://github.com/gitleaks/gitleaks>
+- Final report v2.0 plan: [`docs/research/harness-skills-required/00-final-report.md`](../../docs/research/harness-skills-required/00-final-report.md) §5 P1 #2
 - Charter §2.2 hooks-over-rules: [`docs/synthesis/v1.1/charter-v1.1.md`](../../docs/synthesis/v1.1/charter-v1.1.md)

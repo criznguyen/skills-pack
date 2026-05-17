@@ -1,6 +1,9 @@
 ---
 name: fix-root-cause
 description: Reject workarounds; fix root cause. When the agent considers a workaround (typographical evasion, error suppression, scope-narrowing escape, hardcoded sentinel, test skip), this skill triggers a 4-question gate. Workaround acceptable ONLY if time-pressured AND documented AND tracked AND reversibility-planned. TRIGGER on prompt phrases "workaround", "for now", "just rename", "scoped to file X", "skip test", "ignore this case", "fallback to default", "comment out", "disable check", "2>/dev/null", "|| true", "try/except: pass". SKIP for genuine spec narrowing or feature flag rollouts where the partial path is the intended design. Source: 2026-05-04 ciscrm Wave 2 underscore-evasion incident — sub-agent renamed token in prose to dodge a verify grep instead of fixing scope drift; operator caught it and mandated codification.
+paths: []
+when_to_use: User or sub-agent is stuck and considering a workaround (rename to dodge grep, suppress stderr, skip test, scope-narrow to evade a check) instead of fixing the underlying cause.
+argument-hint: <bug-or-symptom-description>
 type: discipline
 tools: Read, Grep, Glob, Edit
 model: opus
